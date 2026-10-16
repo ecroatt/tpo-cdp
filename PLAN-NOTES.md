@@ -61,3 +61,12 @@ profiles, subscribers, web_events, visitor_links, app_users, app_events (event_i
 - Skills: /pre-audit (runs the PDF's audit prompt and lists fixes), /ai-was-wrong (appends to AI_LOG.md).
 - Stop hook: run `npm test`. Keep the secret-file PreToolUse hook from Grounds.
 - Repo docs: README (run locally, deploy, signed curl example), SECURITY.md, DECISIONS.md, AI_LOG.md.
+
+## Setup
+  "d1_databases": [
+    {
+      "binding": "tpo_cdp",
+      "database_name": "tpo-cdp",
+      "database_id": "4584d2ec-bd1a-4927-aada-b75ee717b407"
+    }
+  ]
