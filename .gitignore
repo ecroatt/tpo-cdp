@@ -1,0 +1,33 @@
+# Local secrets — never commit
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Private keys and certificates
+*.pem
+
+# Google service-account key files (JSON).
+# Google names downloaded keys unpredictably, so keep them in secrets/
+# or rename them to match one of these patterns.
+secrets/
+*service-account*.json
+*service_account*.json
+*-sa-key*.json
+gcp-key*.json
+
+# AWS SAM build output
+.aws-sam/
+
+# Wrangler's local cache and state
+.wrangler/
+
+# Installed packages (recreated by npm install)
+node_modules/
+
+# Personal Claude Code settings (not shared)
+.claude/settings.local.json
+
+docs/TPO_Developer_Assessment.pdf

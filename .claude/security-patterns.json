@@ -1,0 +1,15 @@
+{
+  "patterns": [
+    {
+      "rule_name": "aws_access_key_id",
+      "regex": "AKIA[0-9A-Z]{16}",
+      "reminder": "This looks like an AWS access key ID (starts with AKIA). Never put AWS keys in code. Store them in AWS SSM Parameter Store and read them at runtime."
+    },
+    {
+      "rule_name": "anthropic_api_key",
+      "substrings": ["sk-ant-"],
+      "exclude_paths": [".claude/security-patterns.json"],
+      "reminder": "This looks like an Anthropic API key (starts with sk-ant-). Never put it in code. Use `wrangler secret put` for deployed Workers and .dev.vars (gitignored) for local development."
+    }
+  ]
+}
