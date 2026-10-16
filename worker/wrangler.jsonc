@@ -27,6 +27,13 @@
 			}
 		]
 	},
+	"d1_databases": [
+		{
+			"binding": "tpo_cdp",
+			"database_name": "tpo-cdp",
+			"database_id": "4584d2ec-bd1a-4927-aada-b75ee717b407"
+		}
+	],
 	"observability": {
 		"enabled": true
 	},
