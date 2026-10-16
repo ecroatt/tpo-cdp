@@ -7,25 +7,15 @@
 	"name": "tpo-cdp",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-10-06",
-	"migrations": [
-		{
-			"new_sqlite_classes": [
-				"MyDurableObject"
-			],
-			"tag": "v1"
+	"exports": {
+		"MyDurableObject": {
+			"type": "durable-object",
+			"state": "deleted"
 		}
-	],
+	},
 	"assets": {
 		// The path to the directory containing the `index.html` file to be served at `/`
 		"directory": "./public"
-	},
-	"durable_objects": {
-		"bindings": [
-			{
-				"class_name": "MyDurableObject",
-				"name": "MY_DURABLE_OBJECT"
-			}
-		]
 	},
 	"d1_databases": [
 		{

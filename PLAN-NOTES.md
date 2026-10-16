@@ -3,7 +3,7 @@
 Input for the SPEC.md interview. The assessment brief is `TPO_Developer_Assessment.pdf`; these notes are my decisions and what I found in the data. Where they conflict, the PDF wins. Items marked OPEN still need my decision.
 
 ## Constraints
-- Due with my application by Sun Oct 19, 2026. About 10 hours total, mostly Saturday.
+- Due with my application by Mon Oct 19, 2026; I plan to turn it in Sun Oct 18. About 10 hours total, mostly Saturday.
 - Treat 2026-09-28 as "today" for anything time-based.
 - Stack: Cloudflare Workers (TypeScript) + D1 + wrangler, GitHub Actions (test on PR, test + deploy on main). Same stack as my Grounds project.
 - Build in order: Req 1 > 2 > 3 > 4 > 5 > extras. Extras only after all five work live.
