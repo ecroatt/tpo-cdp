@@ -8,7 +8,8 @@
     "start": "wrangler dev",
     "test": "vitest run",
     "cf-typegen": "wrangler types",
-    "import": "tsx scripts/import.ts"
+    "import": "tsx scripts/import.ts",
+    "perf": "tsx scripts/perf.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.4",
