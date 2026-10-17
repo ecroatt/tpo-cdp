@@ -15,9 +15,8 @@ const rel = (f: string) => relative(root, f).replaceAll("\\", "/");
 const sourceFiles = () => [...walk(join(root, "src")), ...walk(join(root, "scripts"))].filter((f) => /\.(ts|js|mjs)$/.test(f));
 
 /** Returns the text of each `.prepare(` argument list, balanced through nested parens and strings. */
-export function prepareArguments(text: string): { args: string; index: number }[] {
+export function prepareArguments(text: string, marker = ".prepare("): { args: string; index: number }[] {
 	const found: { args: string; index: number }[] = [];
-	const marker = ".prepare(";
 	let from = 0;
 	for (;;) {
 		const at = text.indexOf(marker, from);
@@ -65,18 +64,76 @@ const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
 	],
 };
 
-const SQL_WORDS = /\b(SELECT|INSERT|UPDATE|DELETE|VALUES|WITH)\b/;
+const SQL_WORDS = /\b(SELECT|INSERT|UPDATE|DELETE|VALUES|WITH|WHERE|FROM|AND|OR|JOIN|ORDER|SET|IN)\b/i;
 
 /** Interpolated expressions of SQL-looking template literals that are not in `allowed`. */
 export function disallowedSqlInterpolations(text: string, allowed: string[]): string[] {
 	const bad: string[] = [];
-	for (const literal of text.match(/`(?:[^`\\]|\\.)*`/g) ?? []) {
-		if (!SQL_WORDS.test(literal) && !literal.includes("?")) continue;
-		for (const m of literal.matchAll(/\$\{([^}]*)\}/g)) {
-			if (!allowed.includes(m[1].trim())) bad.push(m[1].trim());
+	for (const m of text.matchAll(/`(?:[^`\\]|\\.)*`/g)) {
+		const literal = m[0];
+		// A template assigned to `sql:` or passed to `.prepare(` is SQL whatever words it contains.
+		const before = text.slice(Math.max(0, m.index! - 40), m.index!);
+		const sqlPosition = /(\bsql\s*:|\.prepare\s*\()\s*$/.test(before);
+		// HTML page templates start with a tag; their prose ("Sign in") would otherwise look like SQL words.
+		if (!sqlPosition && (literal.startsWith("`<") || (!SQL_WORDS.test(literal) && !literal.includes("?")))) continue;
+		for (const part of literal.matchAll(/\$\{([^}]*)\}/g)) {
+			if (!allowed.includes(part[1].trim())) bad.push(part[1].trim());
 		}
 	}
 	return bad;
+}
+
+/** Splits call arguments on top-level commas, ignoring commas inside strings, brackets and parens. */
+function splitArgs(args: string): string[] {
+	const out: string[] = [];
+	let depth = 0;
+	let quote: string | null = null;
+	let start = 0;
+	for (let i = 0; i < args.length; i++) {
+		const ch = args[i];
+		if (quote) {
+			if (ch === "\\") i++;
+			else if (ch === quote) quote = null;
+		} else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+		else if ("([{".includes(ch)) depth++;
+		else if (")]}".includes(ch)) depth--;
+		else if (ch === "," && depth === 0) {
+			out.push(args.slice(start, i).trim());
+			start = i + 1;
+		}
+	}
+	out.push(args.slice(start).trim());
+	return out;
+}
+
+const STRING_LITERAL = /^("([^"\\]|\\.)*"|'([^'\\]|\\.)*')$/;
+const LITERAL_ARRAY = /^\[\s*(("([^"\\]|\\.)*"|'([^'\\]|\\.)*')\s*,?\s*)*\]$/;
+
+/**
+ * `verb`, `table` and `columns` may be interpolated only because every `bulkInsert(` call passes
+ * string literals (and a literal array of strings) for them. Returns the calls that do not.
+ */
+export function nonLiteralBulkInserts(text: string): string[] {
+	const bad: string[] = [];
+	for (const { args, index } of prepareArguments(text, "bulkInsert(")) {
+		if (text.slice(Math.max(0, index - 9), index) === "function ") continue;
+		const [verb, table, columns] = splitArgs(args);
+		if (!STRING_LITERAL.test(verb ?? "") || !STRING_LITERAL.test(table ?? "") || !LITERAL_ARRAY.test(columns ?? "")) {
+			bad.push(args.slice(0, 60));
+		}
+	}
+	return bad;
+}
+
+/**
+ * The `select` interpolation is allowed because it is only ever one of the fixed SELECT strings in the
+ * `dbMetrics` list. Returns true when that list holds nothing but string literals, `+`, brackets and commas.
+ */
+export function dbMetricsIsConstant(text: string): boolean {
+	const m = /const dbMetrics[^=]*=\s*\[([\s\S]*?)\n\t\];/.exec(text);
+	if (!m) return false;
+	const stripped = m[1].replace(/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g, "").replace(/[\s,+[\]]/g, "");
+	return stripped === "";
 }
 
 describe("source scans", () => {
@@ -113,7 +170,32 @@ describe("source scans", () => {
 		expect(disallowedSqlInterpolations("const q = `INSERT INTO t VALUES (${userInput})`;", ["table"])).toEqual(["userInput"]);
 		expect(disallowedSqlInterpolations("const q = `INSERT INTO ${table} VALUES (?)`;", ["table"])).toEqual([]);
 		expect(disallowedSqlInterpolations("const g = `(${cols.map(() => \"?\").join(\", \")})`;", [])).toHaveLength(1);
-		expect(disallowedSqlInterpolations("log(`done in ${ms} ms`)", [])).toEqual([]);
+		expect(disallowedSqlInterpolations("log(`finished after ${ms}ms`)", [])).toEqual([]);
+	});
+
+	it("the interpolated verb/table/columns/select in build.ts only ever come from literal call sites", () => {
+		const text = readFileSync(join(root, "src/import/build.ts"), "utf8");
+		expect(nonLiteralBulkInserts(text)).toEqual([]);
+		expect(dbMetricsIsConstant(text)).toBe(true);
+		expect(text).toContain("bulkInsert(");
+	});
+
+	it("the tightened SQL scan flags keyword-less fragments and non-literal bulkInsert arguments", () => {
+		expect(disallowedSqlInterpolations("const f = `AND source = '${s}'`;", [])).toEqual(["s"]);
+		expect(disallowedSqlInterpolations("const f = `WHERE ${col} = 1`;", [])).toEqual(["col"]);
+		expect(disallowedSqlInterpolations("const o = { sql: `${frag}` };", [])).toEqual(["frag"]);
+		expect(disallowedSqlInterpolations("db.prepare(`${frag}`)", [])).toEqual(["frag"]);
+		expect(disallowedSqlInterpolations("const m = `hello ${name}`;", [])).toEqual([]);
+
+		const good = 'bulkInsert("INSERT", "t", ["a", "b"], rows);';
+		expect(nonLiteralBulkInserts(good)).toEqual([]);
+		expect(nonLiteralBulkInserts("function bulkInsert(verb: string, table: string, columns: string[]) {}")).toEqual([]);
+		expect(nonLiteralBulkInserts('bulkInsert(x, "t", ["a"], rows);')).toHaveLength(1);
+		expect(nonLiteralBulkInserts('bulkInsert("INSERT", userValue, ["a"], rows);')).toHaveLength(1);
+		expect(nonLiteralBulkInserts('bulkInsert("INSERT", "t", cols, rows);')).toHaveLength(1);
+
+		expect(dbMetricsIsConstant('const dbMetrics: [string, string][] = [\n\t["a", "SELECT 1 " + "FROM t"],\n\t];')).toBe(true);
+		expect(dbMetricsIsConstant('const dbMetrics: [string, string][] = [\n\t["a", userSql],\n\t];')).toBe(false);
 	});
 
 	it("no TODO or FIXME in src/ or scripts/", () => {
