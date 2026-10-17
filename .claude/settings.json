@@ -1,17 +1,22 @@
 {
   "permissions": {
     "ask": [
-      "Bash(git push *)",
-      "Bash(npx wrangler deploy*)",
-      "Bash(npx wrangler secret*)",
-      "Bash(npx wrangler d1 * --remote*)",
-      "Bash(wrangler d1 * --remote*)",
+      "Bash(* --remote*)",
+      "Bash(*wrangler deploy*)",
+      "Bash(*wrangler versions deploy*)",
+      "Bash(*wrangler secret*)",
       "Bash(npm run deploy*)",
-      "PowerShell(git push *)",
-      "PowerShell(npx wrangler deploy*)",
-      "PowerShell(npx wrangler secret*)",
-      "PowerShell(npx wrangler d1 * --remote*)",
-      "PowerShell(npm run deploy*)"
+      "Bash(git push*)",
+      "Bash(git -C * push*)",
+      "Bash(git -c * push*)",
+      "PowerShell(* --remote*)",
+      "PowerShell(*wrangler deploy*)",
+      "PowerShell(*wrangler versions deploy*)",
+      "PowerShell(*wrangler secret*)",
+      "PowerShell(npm run deploy*)",
+      "PowerShell(git push*)",
+      "PowerShell(git -C * push*)",
+      "PowerShell(git -c * push*)"
     ]
   },
   "hooks": {
