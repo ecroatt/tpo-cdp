@@ -35,13 +35,13 @@ function toGroups(counts: Map<string, number>): Group[] {
 }
 
 /**
- * Count, first 50 rows (best score first) and the by-source / by-status chart data for validated filters.
+ * Count, the first `limit` rows (50 by default, best score first) and the by-source / by-status chart data for validated filters.
  * One pass over the matching profiles returns each profile's source, status and score; the count, the chart
  * groups and the top 50 are derived from those rows here, so D1 reads the profiles and subscribers once
  * instead of once per figure and without a sort. The only interpolations are `where.sql` (fixed fragments
  * from buildWhere), SCORE_SQL and APP_POINTS_CTE (constants).
  */
-export async function previewSegment(db: D1Database, filters: Filters): Promise<Preview> {
+export async function previewSegment(db: D1Database, filters: Filters, limit = 50): Promise<Preview> {
 	const where = buildWhere(filters);
 	const { results } = await db
 		.prepare(
@@ -63,7 +63,7 @@ export async function previewSegment(db: D1Database, filters: Filters): Promise<
 	}
 	return {
 		count: results.length,
-		rows: results.sort(byScoreThenId).slice(0, 50),
+		rows: results.sort(byScoreThenId).slice(0, limit),
 		chart: { by_source: toGroups(bySource), by_status: toGroups(byStatus) },
 	};
 }
