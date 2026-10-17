@@ -1,4 +1,4 @@
-import { normalizeEmail } from "../lib/email";
+import { emailRawOrNull, normalizeEmail } from "../lib/email";
 import { normalizeSource } from "../lib/source";
 import { parseCsv } from "./csv";
 
@@ -16,7 +16,9 @@ export interface ImportInput {
 
 type Row = Record<string, string>;
 
-const isBlank = (row: Row) => Object.values(row).every((v) => v.trim() === "");
+// The email column goes through email.ts, the only place emails are trimmed.
+const isBlank = (row: Row) =>
+	Object.entries(row).every(([column, v]) => (column === "email" ? emailRawOrNull(v) === null : v.trim() === ""));
 const orNull = (v: string | undefined): string | null => {
 	const t = (v ?? "").trim();
 	return t === "" ? null : t;
@@ -146,7 +148,7 @@ export function buildImportStatements(input: ImportInput, runAt: string): Import
 		seenUsers.add(userId);
 		const emailNorm = normalizeEmail(r.email);
 		if (emailNorm === null) invalidApp++;
-		appOut.push([userId, orNull(r.email) === null ? null : r.email, emailNorm, orNull(r.created_at), "csv"]);
+		appOut.push([userId, emailRawOrNull(r.email), emailNorm, orNull(r.created_at), "csv"]);
 	}
 	counts.app_users_invalid_email = invalidApp;
 	statements.push(
@@ -197,14 +199,14 @@ export function buildImportStatements(input: ImportInput, runAt: string): Import
 			continue;
 		}
 		const emailNorm = normalizeEmail(r.email);
-		if (orNull(r.email) !== null && emailNorm === null) invalidWebEmails++;
+		if (emailRawOrNull(r.email) !== null && emailNorm === null) invalidWebEmails++;
 		webOut.push([
 			visitorId,
 			page,
 			ts,
 			normalizeSource(r.utm_source),
 			orNull(r.utm_source) === null ? null : r.utm_source,
-			orNull(r.email) === null ? null : r.email,
+			emailRawOrNull(r.email),
 			emailNorm,
 		]);
 		if (emailNorm !== null) {
