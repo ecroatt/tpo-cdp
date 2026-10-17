@@ -16,7 +16,7 @@ export default defineConfig({
 							bindings: {
 								UI_PASSWORD: "test-ui-password",
 								WEBHOOK_SECRET: "test-webhook-secret",
-								ANTHROPIC_API_KEY: "test-anthropic-key",
+								ANTHROPIC_API_KEY: "test-fake-anthropic-key",
 								TEST_MIGRATIONS: migrations,
 							},
 						},

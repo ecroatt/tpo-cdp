@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src";
+import { runTool, validatePlan } from "../src/assistant/tools";
 import { recordRowsRead } from "../scripts/lib/rows-read";
 import { loginCookie, resetAll } from "./fixtures/cdp";
 
@@ -190,5 +191,72 @@ describe("D1 rows read stay linear in the data", () => {
 		// Only the 300 profiles with an app account qualify; the 1,200 others have no events.
 		const subscribers = await rowsReadBy("/api/segments/preview", { filters: { app_active_days: 30, kind: ["subscriber"] } });
 		expect(subscribers.body.count).toBe(APP_USERS);
+	});
+});
+
+describe("assistant tools stay within the read budget", () => {
+	async function runRecorded(tool: string, input: unknown) {
+		const checked = validatePlan(tool, input);
+		if (!checked.ok) throw new Error("plan should be valid");
+		const recorder = recordRowsRead(env.tpo_cdp);
+		const result = await runTool(recorder.db, checked.plan);
+		return { result, rows: recorder.rowsRead() };
+	}
+
+	const filterSets: Record<string, unknown>[] = [
+		{},
+		{ sources: ["instagram"], signup_from: "2026-08-01", signup_to: "2026-08-31", cold: true },
+		{ sources: ["instagram"], not_opened_days: 30 },
+		{ app_active_days: 30 },
+		{ signup_from: "2026-08-29" },
+	];
+
+	for (const filters of filterSets) {
+		const label = JSON.stringify(filters);
+		it(`count_profiles, build_segment and engagement_ranking with ${label}`, async () => {
+			for (const [tool, input] of [
+				["count_profiles", { filters }],
+				["build_segment", { filters }],
+				["engagement_ranking", { limit: 100, filters }],
+			] as const) {
+				const { rows } = await runRecorded(tool, input);
+				expect(rows, tool).toBeLessThanOrEqual(BUDGET_FACTOR * seeded);
+			}
+		});
+
+		it(`top_pages (all and first_visit) with ${label}`, async () => {
+			for (const mode of ["all", "first_visit"]) {
+				const { rows } = await runRecorded("top_pages", { filters, mode, limit: 20 });
+				expect(rows, mode).toBeLessThanOrEqual(BUDGET_FACTOR * seeded);
+			}
+		});
+
+		it(`breakdown by every field with ${label}`, async () => {
+			for (const by of ["source", "status", "signup_month", "kind", "cold"]) {
+				const { rows } = await runRecorded("breakdown", { by, filters });
+				expect(rows, by).toBeLessThanOrEqual(BUDGET_FACTOR * seeded);
+			}
+		});
+	}
+
+	it("returns the hand-derived numbers on the seeded data", async () => {
+		// 1,500 profiles on sources i % 3, every visitor with two visits on /news/0 (09-10) and /news/1 (09-11).
+		expect((await runRecorded("count_profiles", { filters: {} })).result.count).toBe(1500);
+		expect((await runRecorded("count_profiles", { filters: { sources: ["x"] } })).result.count).toBe(500);
+		expect((await runRecorded("breakdown", { by: "source" })).result.rows).toEqual([
+			{ group: "google", count: 500 },
+			{ group: "instagram", count: 500 },
+			{ group: "x", count: 500 },
+		]);
+		// Even i opened 2026-07-01 (cold), odd i opened 2026-09-20 (not cold).
+		expect((await runRecorded("breakdown", { by: "cold" })).result.rows).toEqual([
+			{ group: "cold", count: 750 },
+			{ group: "not cold", count: 750 },
+		]);
+		expect((await runRecorded("top_pages", { mode: "first_visit", limit: 20 })).result.rows).toEqual([{ page: "/news/0", profiles: 1500 }]);
+		expect((await runRecorded("top_pages", { mode: "all", limit: 20 })).result.rows).toEqual([
+			{ page: "/news/0", profiles: 1500 },
+			{ page: "/news/1", profiles: 1500 },
+		]);
 	});
 });

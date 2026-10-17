@@ -58,6 +58,8 @@ const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
 	"src/segments/filters.ts": ["marks(filters.sources.length)", "marks(filters.kind.length)"],
 	// previewSegment: the WHERE body from buildWhere and the constant SCORE_SQL. Nothing else.
 	"src/segments/query.ts": ["where.sql", "SCORE_SQL", "APP_POINTS_CTE"],
+	// The assistant tools: the WHERE body from buildWhere and nothing else.
+	"src/assistant/tools.ts": ["where.sql"],
 	// ownedActivity / ownedWindowPoints: two constants defined in the same file (string literals joined by +).
 	"src/lib/owned-events.ts": ["OWNED_EVENTS_CTE", "POINTS_IF_IN_WINDOW"],
 	// storeEvent: two constant guard fragments (string literals in the same file) spliced into its INSERT ... SELECT statements.
@@ -297,6 +299,14 @@ describe("source scans", () => {
 		expect(disallowedSqlInterpolations(owned, ALLOWED_SQL_INTERPOLATIONS["src/lib/owned-events.ts"])).toEqual([]);
 		// A value interpolated next to the allowed ones is still caught.
 		expect(disallowedSqlInterpolations("db.prepare(`SELECT 1 WHERE ${where.sql} AND x = '${value}'`)", ["where.sql", "SCORE_SQL"])).toEqual(["value"]);
+	});
+
+	it("the assistant tools splice only the buildWhere body into their SQL", () => {
+		const tools = readFileSync(join(root, "src/assistant/tools.ts"), "utf8");
+		expect(disallowedSqlInterpolations(tools, ALLOWED_SQL_INTERPOLATIONS["src/assistant/tools.ts"])).toEqual([]);
+		expect(tools).toContain("buildWhere(");
+		expect(tools).toContain("${where.sql}");
+		expect(badSqlPositions(tools, ALLOWED_SQL_INTERPOLATIONS["src/assistant/tools.ts"])).toEqual([]);
 	});
 
 	it("the webhook store guards are string literals, so the store.ts templates only splice constants", () => {
