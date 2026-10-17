@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Segments - TPO CDP</title>
+		<link rel="stylesheet" href="/style.css" />
+	</head>
+	<body>
+		<header>
+			<h1>TPO CDP</h1>
+			<nav>
+				<a href="/">Home</a>
+				<a href="/lookup">Lookup</a>
+				<a href="/segments">Segments</a>
+			</nav>
+			<form method="post" action="/logout">
+				<button type="submit">Sign out</button>
+			</form>
+		</header>
+		<main>
+			<h2>Segments</h2>
+			<form id="filters">
+				<fieldset id="sources"><legend>Source</legend></fieldset>
+				<label>Status
+					<select name="status">
+						<option value="">Any</option>
+						<option value="active">Active</option>
+						<option value="unsubscribed">Unsubscribed</option>
+					</select>
+				</label>
+				<label>Signed up from <input name="signup_from" type="date" /></label>
+				<label>Signed up to <input name="signup_to" type="date" /></label>
+				<label>Cold
+					<select name="cold">
+						<option value="">Any</option>
+						<option value="true">Cold</option>
+						<option value="false">Not cold</option>
+					</select>
+				</label>
+				<label>Not opened in N days <input name="not_opened_days" type="number" min="1" max="365" /></label>
+				<fieldset id="kinds"><legend>Profile kind</legend></fieldset>
+				<label>Has app account
+					<select name="has_app">
+						<option value="">Any</option>
+						<option value="true">Yes</option>
+						<option value="false">No</option>
+					</select>
+				</label>
+				<label>App active in last N days <input name="app_active_days" type="number" min="1" max="365" /></label>
+				<label>Min site visits (last 30 days) <input name="min_site_visits" type="number" min="0" max="10000" /></label>
+				<button type="submit">Preview</button>
+			</form>
+			<p id="status"></p>
+			<p id="count"></p>
+			<div id="results"></div>
+		</main>
+		<script type="module" src="/segments.js"></script>
+	</body>
+</html>

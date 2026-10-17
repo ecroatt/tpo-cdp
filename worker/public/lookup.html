@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Lookup - TPO CDP</title>
+		<link rel="stylesheet" href="/style.css" />
+	</head>
+	<body>
+		<header>
+			<h1>TPO CDP</h1>
+			<nav>
+				<a href="/">Home</a>
+				<a href="/lookup">Lookup</a>
+				<a href="/segments">Segments</a>
+			</nav>
+			<form method="post" action="/logout">
+				<button type="submit">Sign out</button>
+			</form>
+		</header>
+		<main>
+			<h2>Lookup</h2>
+			<form id="search">
+				<label for="q">Email, profile ID, user ID or visitor ID (exact match)</label>
+				<input id="q" name="q" type="search" autocomplete="off" required />
+				<button type="submit">Search</button>
+			</form>
+			<p id="status"></p>
+			<div id="results"></div>
+		</main>
+		<script type="module" src="/lookup.js"></script>
+	</body>
+</html>
