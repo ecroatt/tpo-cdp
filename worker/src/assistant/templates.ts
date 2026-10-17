@@ -21,7 +21,8 @@ export function describeFilters(filters: Filters): string {
 }
 
 function countSentence(count: number, filters: Filters): string {
-	return `${count} ${count === 1 ? "profile matches" : "profiles match"}: ${describeFilters(filters)}.`;
+	const verb = count === 1 ? "profile matches" : "profiles match";
+	return count + " " + verb + ": " + describeFilters(filters) + ".";
 }
 
 /**
@@ -44,7 +45,8 @@ export function answerFor(result: ToolResult): string {
 			const desc = describeFilters(filters);
 			if (rows.length === 0) return `No pages found for profiles matching ${desc}.`;
 			const list = (rows as { page: string; profiles: number }[]).map((r) => `${r.page} (${r.profiles})`).join(", ");
-			return `Top ${rows.length} ${mode === "first_visit" ? "first pages" : "pages"} for profiles matching ${desc}: ${list}.`;
+			const noun = mode === "first_visit" ? "first pages" : "pages";
+			return `Top ${rows.length} ${noun} for profiles matching ${desc}: ${list}.`;
 		}
 		case "breakdown": {
 			const { by, filters } = params as { by: string; filters: Filters };

@@ -2,6 +2,7 @@ import { handleLogin, handleLogout } from "./auth/login";
 import { hasValidSession } from "./auth/session";
 import { csrfCheck } from "./http/csrf";
 import { json, withSecurityHeaders } from "./http/security";
+import { handleAssistant } from "./routes/assistant";
 import { handleImportReport } from "./routes/import-report";
 import { handleLookup } from "./routes/lookup";
 import { handlePreview } from "./routes/segments";
@@ -31,6 +32,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 	if (path === "/api/import-report" && request.method === "GET") return handleImportReport(env);
 	if (path === "/api/lookup" && request.method === "GET") return handleLookup(env, url);
 	if (path === "/api/segments/preview" && request.method === "POST") return handlePreview(request, env);
+	if (path === "/api/assistant" && request.method === "POST") return handleAssistant(request, env);
 	if (path.startsWith("/api/")) return json({ error: "not_found" }, 404);
 
 	return env.ASSETS.fetch(request);
