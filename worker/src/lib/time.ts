@@ -7,9 +7,9 @@ export function daysBefore(date: string, days: number): string {
 	return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Whole days from `from` to `to` (both YYYY-MM-DD); positive when `to` is later. */
-export function daysBetween(from: string, to: string): number {
-	return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+/** Whole days from `start` to `end` (both YYYY-MM-DD); positive when `end` is later. */
+export function daysBetween(start: string, end: string): number {
+	return Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000);
 }
 
 /** "Last 30 days": dates >= this (SPEC section 0). No upper bound. */

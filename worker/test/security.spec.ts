@@ -23,8 +23,8 @@ const loginRequest = (password: string, ip = "198.51.100.1"): RequestInit => ({
 });
 
 /** Logs in and returns the cookie pair to send back. */
-async function login(): Promise<string> {
-	const response = await call("/login", loginRequest(PASSWORD));
+async function login(ip?: string): Promise<string> {
+	const response = await call("/login", loginRequest(PASSWORD, ip));
 	expect(response.status).toBe(303);
 	return response.headers.get("Set-Cookie")!.split(";")[0];
 }
@@ -221,6 +221,57 @@ describe("requests and headers", () => {
 			body: "{}",
 		});
 		expect(response.status).toBe(403);
+	});
+
+	it("A POST to /api/segments with a foreign Origin gets 403", async () => {
+		// With a valid session, so the 403 comes from the CSRF gate and not from a missing login.
+		const cookie = await login("198.51.100.31");
+		for (const path of ["/api/segments", "/api/segments/preview"]) {
+			const response = await call(path, {
+				method: "POST",
+				headers: { Cookie: cookie, "Content-Type": "application/json", Origin: "https://evil.example" },
+				body: JSON.stringify({ filters: {} }),
+			});
+			expect(response.status, path).toBe(403);
+			expect(await response.json()).toEqual({ error: "forbidden" });
+		}
+		// The same request from the page's own origin passes the gate.
+		const ok = await call("/api/segments/preview", {
+			method: "POST",
+			headers: { Cookie: cookie, "Content-Type": "application/json", Origin: BASE },
+			body: JSON.stringify({ filters: {} }),
+		});
+		expect(ok.status).toBe(200);
+	});
+
+	it("a POST to /api/segments/preview with a missing or wrong Content-Type or Origin gets 403", async () => {
+		const cookie = await login("198.51.100.32");
+		const body = JSON.stringify({ filters: {} });
+		const attempts: Record<string, HeadersInit> = {
+			"wrong type": { Cookie: cookie, "Content-Type": "text/plain", Origin: BASE },
+			"form type": { Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded", Origin: BASE },
+			"no type": { Cookie: cookie, Origin: BASE },
+			"no origin": { Cookie: cookie, "Content-Type": "application/json" },
+		};
+		for (const [name, headers] of Object.entries(attempts)) {
+			const response = await call("/api/segments/preview", { method: "POST", headers, body });
+			expect(response.status, name).toBe(403);
+		}
+		// Without a session the answer is 401 before CSRF matters.
+		const anonymous = await call("/api/segments/preview", { method: "POST", headers: { "Content-Type": "application/json", Origin: BASE }, body });
+		expect(anonymous.status).toBe(401);
+	});
+
+	it("the Lookup and Segments pages sit behind the gate and the home page links to them", async () => {
+		const cookie = await login("198.51.100.33");
+		for (const path of ["/lookup", "/segments"]) {
+			expect((await call(path)).status, path).toBe(302);
+			const page = await call(path, { headers: { Cookie: cookie }, redirect: "follow" });
+			expect(page.status, path).toBe(200);
+		}
+		const home = await (await call("/", { headers: { Cookie: cookie } })).text();
+		expect(home).toContain('href="/lookup"');
+		expect(home).toContain('href="/segments"');
 	});
 
 	it("the CSP and nosniff headers are present on HTML and API responses", async () => {

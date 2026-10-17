@@ -198,5 +198,6 @@ export function buildWhere(filters: Filters): { sql: string; binds: Bind[] } {
 		parts.push(SITE_VISITS_SQL);
 		binds.push(LAST_30_START, filters.min_site_visits);
 	}
-	return { sql: parts.length === 0 ? "1 = 1" : parts.join(" AND "), binds };
+	const sql = parts.length === 0 ? "1 = 1" : parts.join(" AND ");
+	return { sql, binds };
 }

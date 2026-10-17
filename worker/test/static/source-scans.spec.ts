@@ -274,7 +274,7 @@ describe("source scans", () => {
 		// marks() emits only "?" and the fixed fragments are plain string literals.
 		expect(filters).toMatch(/Array\.from\(\{ length: count \}, \(\) => "\?"\)\.join\(", "\)/);
 		for (const name of ["COLD_SQL", "NOT_OPENED_SQL", "HAS_APP_SQL", "APP_ACTIVE_SQL", "SITE_VISITS_SQL"]) {
-			const m = new RegExp(`const ${name} =\s*([^;]*);`).exec(filters);
+			const m = new RegExp(`const ${name} =\\s*([^;]*);`).exec(filters);
 			expect(m, name).not.toBeNull();
 			expect(isConstantSql(m![1]), name).toBe(true);
 		}
