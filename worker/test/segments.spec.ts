@@ -6,6 +6,7 @@ import { isCold } from "../src/segments/definitions";
 import { engagementFor, newsletterPoints } from "../src/segments/engagement";
 import { buildWhere, SOURCES, validateFilters, type Filters } from "../src/segments/filters";
 import { handlePreview } from "../src/routes/segments";
+import { makeEvent, postWebhook } from "./fixtures/webhook";
 import {
 	addAppUser,
 	addDeviceLink,
@@ -603,5 +604,45 @@ describe("engagement score", () => {
 			expect(row.score, row.profile_id).toBe(detail.score);
 		}
 		expect(all.rows[0].profile_id).toBe("p_eng");
+	});
+});
+
+describe("webhook events and segments", () => {
+	beforeEach(async () => {
+		await seedSubscribers();
+		await addAppUser("u_w", "go_21");
+	});
+
+	const scoreOf = async (profileId: string) => (await preview({})).rows.find((r) => r.profile_id === profileId)!.score;
+
+	it("A webhook `read_story` changes the score and `app_active_days` membership with no restart", async () => {
+		// go_21: google subscriber, last open 2026-09-21 (inside 30 days, outside 7), so newsletter 1 and no other points.
+		expect(await scoreOf("go_21")).toBe(1);
+		expect(ids(await preview({ app_active_days: 30 }))).toEqual([]);
+		const lookupBefore = (await (await call("/api/lookup?q=u_w", {}, cookie)).json()) as any;
+		expect(lookupBefore.engagement.score).toBe(1);
+
+		const response = await postWebhook(makeEvent({ event: "read_story", user_id: "u_w", device_id: "d_w", timestamp: "2026-09-27T10:00:00Z", properties: { story: "a-story" } }));
+		expect(response.status).toBe(200);
+
+		// A read_story is worth 2 points: 1 + 2 = 3, in both the preview and the lookup.
+		expect(await scoreOf("go_21")).toBe(3);
+		expect(ids(await preview({ app_active_days: 30 }))).toEqual(["go_21"]);
+		expect(ids(await preview({ app_active_days: 1 }))).toEqual([]);
+		const lookupAfter = (await (await call("/api/lookup?q=u_w", {}, cookie)).json()) as any;
+		expect(lookupAfter.engagement.score).toBe(3);
+		expect(lookupAfter.engagement.breakdown).toEqual({ newsletter: 1, site: 0, app: 2 });
+		// An app_open adds 1 more.
+		await postWebhook(makeEvent({ event: "app_open", user_id: "u_w", device_id: "d_w", timestamp: "2026-09-27T11:00:00Z" }));
+		expect(await scoreOf("go_21")).toBe(4);
+	});
+
+	it("A webhook login on a device attributes its earlier anonymous events to the profile in the segment query", async () => {
+		await postWebhook(makeEvent({ event_id: "sa1", event: "read_story", device_id: "d_seg", timestamp: "2026-09-26T10:00:00Z", properties: { story: "s" } }));
+		expect(ids(await preview({ app_active_days: 30 }))).toEqual([]);
+		await postWebhook(makeEvent({ event_id: "sa2", event: "login", user_id: "u_w", device_id: "d_seg", timestamp: "2026-09-26T10:05:00Z" }));
+		expect(ids(await preview({ app_active_days: 30 }))).toEqual(["go_21"]);
+		// read_story 2 (device-attributed) + login 1 + newsletter 1.
+		expect(await scoreOf("go_21")).toBe(4);
 	});
 });

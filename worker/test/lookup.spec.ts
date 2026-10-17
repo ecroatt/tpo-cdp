@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { addAppUser, addDeviceLink, addEvent, addProfile, addSubscriber, addVisit, addVisitor, call, loginCookie, resetAll } from "./fixtures/cdp";
+import { makeEvent, postWebhook } from "./fixtures/webhook";
 
 let cookie = "";
 
@@ -245,5 +246,50 @@ describe("app_event_owner view", () => {
 	it("leaves an anonymous event on a device with no links unowned", async () => {
 		await addEvent({ id: "lonely", event: "app_open", user: null, device: "d_none", ts: "2026-09-05T00:00:00Z" });
 		expect(await owner("lonely")).toBeNull();
+	});
+});
+
+describe("lookup after webhook events", () => {
+	beforeEach(seedJane);
+
+	it("A webhook event posted in the test shows up in a lookup made right after it", async () => {
+		const before = (await (await lookup("u_jane")).json()) as any;
+		expect(before.app_activity.total).toBe(3);
+		const event = makeEvent({ event: "link_click", user_id: "u_jane", device_id: "d_j", timestamp: "2026-09-29T09:00:00Z", properties: { url: "https://example.test/offer" } });
+		const posted = await postWebhook(event);
+		expect(posted.status).toBe(200);
+		expect(await posted.json()).toEqual({ status: "stored" });
+		const after = (await (await lookup("u_jane")).json()) as any;
+		expect(after.app_activity.total).toBe(4);
+		expect(after.app_activity.recent[0]).toMatchObject({
+			event_id: event.event_id,
+			event: "link_click",
+			ts: "2026-09-29T09:00:00Z",
+			user_id: "u_jane",
+			properties: { url: "https://example.test/offer" },
+			attributed_from_device: false,
+		});
+		// Jane's seeded app points are 4 (read_story 2 + two app_open); the link_click adds 1.
+		expect(after.engagement.breakdown.app).toBe(5);
+		expect(after.app_activity.last_seen).toBe("2026-09-29T09:00:00Z");
+	});
+
+	it("An anonymous event attributed by login is flagged (events sent through the webhook)", async () => {
+		// A new device with two anonymous events, then Jane logs in on it.
+		await postWebhook(makeEvent({ event_id: "w_anon1", device_id: "d_wh", timestamp: "2026-09-21T08:00:00Z" }));
+		await postWebhook(makeEvent({ event_id: "w_anon2", event: "read_story", device_id: "d_wh", timestamp: "2026-09-21T08:05:00Z", properties: { story: "morning-edition" } }));
+		const unattributed = (await (await lookup("u_jane")).json()) as any;
+		expect(unattributed.app_activity.recent.map((e: any) => e.event_id)).not.toContain("w_anon1");
+		const login = await postWebhook(makeEvent({ event_id: "w_login", event: "login", user_id: "u_jane", device_id: "d_wh", timestamp: "2026-09-21T08:10:00Z" }));
+		expect(login.status).toBe(200);
+		const body = (await (await lookup("u_jane")).json()) as any;
+		const byId = Object.fromEntries(body.app_activity.recent.map((e: any) => [e.event_id, e]));
+		expect(byId.w_anon1.attributed_from_device).toBe(true);
+		expect(byId.w_anon2.attributed_from_device).toBe(true);
+		expect(byId.w_anon2.properties).toEqual({ story: "morning-edition" });
+		expect(byId.w_login.attributed_from_device).toBe(false);
+		expect(byId.w_login.user_id).toBe("u_jane");
+		// Jane's 3 seeded events plus the 3 above.
+		expect(body.app_activity.total).toBe(6);
 	});
 });
