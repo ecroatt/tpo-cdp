@@ -10,6 +10,7 @@ You implement exactly one phase (or one SPEC section) of this repo, as named in 
 ## Rules
 
 - Write the phase's listed tests first, then the code that makes them pass.
+- Commit the phase's tests in their own commit before the code commit. Expected values come from SPEC and the fixtures, never from running the code. `git log` must show the test commit first; a code commit with no earlier test commit for that phase breaks this rule.
 - Run `npm test` from `worker/` before you finish. Report the real output, including failures.
 - Make small commits with clear messages (git from the repo root). Never push.
 - Never read `.dev.vars` or print secret values.
