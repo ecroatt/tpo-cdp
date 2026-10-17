@@ -9,7 +9,8 @@
     "test": "vitest run",
     "cf-typegen": "wrangler types",
     "import": "tsx scripts/import.ts",
-    "perf": "tsx scripts/perf.ts"
+    "perf": "tsx scripts/perf.ts",
+    "send-events": "tsx scripts/send-events.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.4",
