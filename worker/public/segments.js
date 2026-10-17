@@ -1,4 +1,5 @@
 import { clear, el, postJson, table } from "/api.js";
+import { clearChart, drawChart, groupsToChart } from "/charts.js";
 
 // Matches SOURCES and KINDS in src/segments/filters.ts; the server validates whatever is sent.
 const SOURCES = ["direct", "facebook", "google", "instagram", "podcast", "referral", "x"];
@@ -8,6 +9,8 @@ const form = document.getElementById("filters");
 const status = document.getElementById("status");
 const count = document.getElementById("count");
 const results = document.getElementById("results");
+const sourceChart = document.getElementById("chart");
+const statusChart = document.getElementById("chart-status");
 
 function checkboxes(containerId, name, values) {
 	const container = document.getElementById(containerId);
@@ -47,6 +50,8 @@ function readFilters() {
 form.addEventListener("submit", async (event) => {
 	event.preventDefault();
 	clear(results);
+	clearChart(sourceChart);
+	clearChart(statusChart);
 	count.textContent = "";
 	status.textContent = "Loading...";
 	const { status: code, body } = await postJson("/api/segments/preview", { filters: readFilters() });
@@ -60,6 +65,8 @@ form.addEventListener("submit", async (event) => {
 	}
 	status.textContent = "";
 	count.textContent = `${body.count} profiles match. Showing the first ${body.rows.length}, best engagement first.`;
+	drawChart(sourceChart, groupsToChart(body.chart.by_source, "Profiles by source"));
+	drawChart(statusChart, groupsToChart(body.chart.by_status, "Profiles by status"));
 	results.append(
 		table(
 			["Profile", "Email", "Source", "Status", "Signed up", "Last open", "Score"],

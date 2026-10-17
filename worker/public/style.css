@@ -64,3 +64,28 @@ dt {
 dd {
 	margin-left: 0;
 }
+
+.chart-box {
+	position: relative;
+	height: 18rem;
+	margin: 1rem 0;
+}
+
+.chart-box[hidden],
+.chart-box:has(canvas[hidden]) {
+	display: none;
+}
+
+textarea {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	font: inherit;
+}
+
+pre {
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: #f5f5f5;
+	padding: 0.6rem;
+}

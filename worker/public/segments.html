@@ -13,6 +13,7 @@
 				<a href="/">Home</a>
 				<a href="/lookup">Lookup</a>
 				<a href="/segments">Segments</a>
+				<a href="/assistant">Assistant</a>
 			</nav>
 			<form method="post" action="/logout">
 				<button type="submit">Sign out</button>
@@ -53,8 +54,11 @@
 			</form>
 			<p id="status"></p>
 			<p id="count"></p>
+			<div class="chart-box"><canvas id="chart" hidden></canvas></div>
+			<div class="chart-box"><canvas id="chart-status" hidden></canvas></div>
 			<div id="results"></div>
 		</main>
+		<script src="/vendor/chart.umd.min.js"></script>
 		<script type="module" src="/segments.js"></script>
 	</body>
 </html>
