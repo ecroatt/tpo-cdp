@@ -34,3 +34,6 @@ docs/TPO_Developer_Assessment.pdf
 
 # Assessment data (contains personal data; keep local only)
 data/*.csv
+
+# Pre-audit output (regenerated, not committed)
+AUDIT-PREVIEW.md

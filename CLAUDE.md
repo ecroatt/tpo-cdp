@@ -38,3 +38,10 @@ A mini customer data platform (CDP) for a take-home assessment, due Mon Oct 19, 
 
 - `.claude/hooks/block-secret-files.js` blocks tools from reading secret files; `.claude/settings.local.json` is personal and gitignored.
 - Check current Cloudflare docs when unsure about a Workers or D1 API.
+
+## How phases run
+
+- The main session is the supervisor. It sends all code writing to the `builder` subagent and all checks to the `verifier` subagent (`.claude/agents/`).
+- Every gap the verifier reports is logged with `/ai-was-wrong` before it is fixed.
+- At the end of a phase, print the phase report from `SPEC.md` and ask the user before pushing.
+- Never start the next phase without the user's go-ahead.
