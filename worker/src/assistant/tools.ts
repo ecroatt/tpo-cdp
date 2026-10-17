@@ -167,7 +167,7 @@ async function breakdown(db: D1Database, by: BreakdownField, filters: Filters): 
 /**
  * Pages by profiles. The matching profiles are found first (the `m` CTE, with the buildWhere body), then one pass over
  * their linked visits: 'all' counts each profile once per page, 'first_visit' keeps only each profile's earliest visit
- * across all of its visitor_ids, at any time. No per-profile subqueries.
+ * across all of its visitor_ids, at any time (MIN over ts + page, so a tie on time takes the page that sorts first). No per-profile subqueries.
  */
 async function topPages(db: D1Database, filters: Filters, mode: PagesMode, limit: number): Promise<ToolResult> {
 	const where = buildWhere(filters);
@@ -181,9 +181,10 @@ async function topPages(db: D1Database, filters: Filters, mode: PagesMode, limit
 				)
 			: db.prepare(
 					`WITH m AS (SELECT p.profile_id AS profile_id FROM profiles p LEFT JOIN subscribers s ON s.email_norm = p.email_norm WHERE ${where.sql}),
-					f AS (SELECT w.page AS page, ROW_NUMBER() OVER (PARTITION BY vl.profile_id ORDER BY w.ts ASC, w.id ASC) AS rn
-						FROM m JOIN visitor_links vl ON vl.profile_id = m.profile_id JOIN web_events w ON w.visitor_id = vl.visitor_id)
-					SELECT page, COUNT(*) AS profiles FROM f WHERE rn = 1 GROUP BY page ORDER BY profiles DESC, page ASC LIMIT ?`,
+					f AS (SELECT MIN(w.ts || '|' || w.page) AS k
+						FROM m JOIN visitor_links vl ON vl.profile_id = m.profile_id JOIN web_events w ON w.visitor_id = vl.visitor_id
+						GROUP BY vl.profile_id)
+					SELECT substr(k, instr(k, '|') + 1) AS page, COUNT(*) AS profiles FROM f GROUP BY page ORDER BY profiles DESC, page ASC LIMIT ?`,
 				);
 	const { results } = await statement.bind(...where.binds, limit).all<{ page: string; profiles: number }>();
 	const title = mode === "all" ? "Pages visited (profiles)" : "First pages visited (profiles)";

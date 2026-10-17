@@ -3,6 +3,7 @@
 import { resolve } from "node:path";
 import { getPlatformProxy } from "wrangler";
 import worker from "../src/index";
+import { runTool, validatePlan } from "../src/assistant/tools";
 import { COOKIE_NAME, sha256Hex } from "../src/auth/session";
 import { applyPerfSeed, buildPerfSeed } from "./lib/perf-seed";
 import { recordRowsRead } from "./lib/rows-read";
@@ -139,6 +140,45 @@ async function main(): Promise<void> {
 			filters: { app_active_days: 30, sources: ["instagram"] },
 		});
 		await call("import report", "/api/import-report");
+
+		// Every query type the assistant can run, straight through the tools (no model call), each with no filters and
+		// with realistic filter sets: the brief's Q1 filters, Q3's new-subscriber filter and an app_active_days filter.
+		console.log("Assistant tools (no model call):");
+		const tool = async (label: string, name: string, input: unknown): Promise<void> => {
+			const checked = validatePlan(name, input);
+			if (!checked.ok) {
+				failed = true;
+				console.error(`${label}: plan rejected by validatePlan`);
+				return;
+			}
+			recorder.reset();
+			const result = await runTool(recorder.db, checked.plan);
+			const rows = recorder.rowsRead();
+			const over = rows >= ROWS_READ_BUDGET;
+			const shown = result.rows === undefined ? (result.count === undefined ? "" : "count " + result.count) : result.rows.length + " rows";
+			console.log(
+				`${label.padEnd(58)} statements ${String(recorder.statements()).padStart(3)}  rows_read ${String(rows).padStart(8)}  ${shown}` +
+					(over ? "  <== OVER BUDGET (" + ROWS_READ_BUDGET + " or more)" : ""),
+			);
+			if (over) failed = true;
+		};
+		const q1 = { sources: ["instagram"], signup_from: "2026-08-01", signup_to: "2026-08-31", cold: true };
+		const filterSets: [string, Record<string, unknown>][] = [
+			["no filters", {}],
+			["brief Q1 filters", q1],
+			["new subscribers (Q3)", { signup_from: "2026-08-29" }],
+			["instagram, not opened 30d", { sources: ["instagram"], not_opened_days: 30 }],
+			["app_active_days 30", { app_active_days: 30 }],
+		];
+		for (const [name, filters] of filterSets) {
+			await tool(`count_profiles: ${name}`, "count_profiles", { filters });
+			await tool(`build_segment: ${name}`, "build_segment", { filters });
+			await tool(`top_pages all: ${name}`, "top_pages", { filters, mode: "all", limit: 20 });
+			await tool(`top_pages first_visit: ${name}`, "top_pages", { filters, mode: "first_visit", limit: 20 });
+			for (const by of ["source", "status", "signup_month", "kind", "cold"]) await tool(`breakdown by ${by}: ${name}`, "breakdown", { by, filters });
+			await tool(`engagement_ranking 50: ${name}`, "engagement_ranking", { limit: 50, filters });
+		}
+		await tool("engagement_ranking 100: no filters", "engagement_ranking", { limit: 100 });
 	} catch (err) {
 		if (process.exitCode !== 1) {
 			failed = true;
