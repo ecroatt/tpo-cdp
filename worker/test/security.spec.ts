@@ -265,7 +265,9 @@ describe("requests and headers", () => {
 	it("the Lookup and Segments pages sit behind the gate and the home page links to them", async () => {
 		const cookie = await login("198.51.100.33");
 		for (const path of ["/lookup", "/segments"]) {
-			expect((await call(path)).status, path).toBe(302);
+			const anonymous = await call(path);
+			expect(anonymous.status, path).toBe(302);
+			expect(anonymous.headers.get("Location"), path).toBe("/login");
 			const page = await call(path, { headers: { Cookie: cookie }, redirect: "follow" });
 			expect(page.status, path).toBe(200);
 		}

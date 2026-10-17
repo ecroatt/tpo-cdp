@@ -55,8 +55,14 @@ describe("SPEC 3 Segments page", () => {
 	});
 
 	it("script reads every filter key into the filters object", () => {
-		for (const key of ["sources", "kind", "status", "signup_from", "signup_to", "cold", "has_app", "not_opened_days", "app_active_days", "min_site_visits"]) {
-			expect(js, key).toMatch(new RegExp(String.raw`filters\.${key}\b|"${key}"`));
+		// sources and kind are assigned directly.
+		for (const key of ["sources", "kind"]) {
+			expect(js, key).toMatch(new RegExp(String.raw`filters\.${key}\s*=`));
+		}
+		// The rest are assigned as filters[key] inside a loop over a list that names the key.
+		for (const key of ["status", "signup_from", "signup_to", "cold", "has_app", "not_opened_days", "app_active_days", "min_site_visits"]) {
+			expect(js, key).toMatch(new RegExp(String.raw`for \(const key of \[[^\]]*"${key}"[^\]]*\]\) \{\s*if \([^
+]*\) filters\[key\] =`));
 		}
 	});
 

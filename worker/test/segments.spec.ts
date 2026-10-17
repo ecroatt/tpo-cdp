@@ -167,6 +167,23 @@ describe("each filter", () => {
 		expect(daysBefore(TODAY, 10)).toBe("2026-09-18");
 	});
 
+	it("app_active_days has no upper bound: an owned event dated after TODAY counts", async () => {
+		await addAppUser("u_future", "ig_29");
+		await addEvent({ id: "e_future", event: "app_open", user: "u_future", device: "d_future", ts: "2026-10-05T00:00:00Z" });
+		expect(ids(await preview({ app_active_days: 1 }))).toEqual(["ig_29"]);
+		expect(ids(await preview({ app_active_days: 365 }))).toEqual(["ig_29"]);
+	});
+
+	it("min_site_visits has no upper bound: a linked visit dated after TODAY counts", async () => {
+		await addVisitor("v_f1", "ig_29");
+		await addVisitor("v_f2", "ig_cold");
+		await addVisit("v_f1", "2026-09-10T00:00:00Z");
+		await addVisit("v_f1", "2026-10-05T00:00:00Z");
+		await addVisit("v_f2", "2026-10-05T00:00:00Z");
+		expect(ids(await preview({ min_site_visits: 2 }))).toEqual(["ig_29"]);
+		expect(ids(await preview({ min_site_visits: 1 }))).toEqual(["ig_29", "ig_cold"]);
+	});
+
 	it("min_site_visits counts linked visits in the last 30 days, with >= semantics", async () => {
 		await addVisitor("v_1", "ig_29");
 		await addVisitor("v_2", "ig_29");
@@ -218,6 +235,23 @@ describe("rows, count and chart come from the real database", () => {
 		const dbCount = await env.tpo_cdp.prepare("SELECT COUNT(*) AS n FROM profiles").first<{ n: number }>();
 		expect(dbCount!.n).toBe(result.count);
 		expect(result.chart.by_source.reduce((a, g) => a + g.count, 0)).toBe(result.count);
+	});
+
+	it("chart counts follow the filter: a source filter and a status filter each narrow by_source and by_status", async () => {
+		const toMap = (g: { group: string; count: number }[]) => Object.fromEntries(g.map((x) => [x.group, x.count]));
+		// Instagram: ig_cold, ig_28, ig_29, ig_never_28, ig_never_29 active, ig_unsub unsubscribed.
+		const ig = await preview({ sources: ["instagram"] });
+		expect(ig.count).toBe(6);
+		expect(toMap(ig.chart.by_source)).toEqual({ instagram: 6 });
+		expect(toMap(ig.chart.by_status)).toEqual({ active: 5, unsubscribed: 1 });
+		// Unsubscribed: only ig_unsub.
+		const unsub = await preview({ status: "unsubscribed" });
+		expect(toMap(unsub.chart.by_source)).toEqual({ instagram: 1 });
+		expect(toMap(unsub.chart.by_status)).toEqual({ unsubscribed: 1 });
+		// Active: 5 instagram, 2 google, 1 x, 1 with no source.
+		const active = await preview({ status: "active" });
+		expect(toMap(active.chart.by_source)).toEqual({ instagram: 5, google: 2, x: 1, none: 1 });
+		expect(toMap(active.chart.by_status)).toEqual({ active: 9 });
 	});
 
 	it("each row carries profile_id, email, source, status, signup, last open and score", async () => {
