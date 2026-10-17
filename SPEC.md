@@ -23,7 +23,7 @@ This is the source of truth for behavior. The brief (`docs/TPO_Developer_Assessm
 
 ## 1. Pulls it together (import, link, dedupe)
 
-### Data model (D1, `worker/migrations/0001_init.sql`)
+### Data model (D1, `worker/migrations/0001_init.sql`, `0002_app_event_owner.sql`, `0003_read_indexes.sql`)
 D1 migrations live in `migrations_dir` on the `d1_databases` entry. This is unrelated to the Durable Object `migrations` key that CLAUDE.md says must not come back.
 
 - `profiles(profile_id TEXT PK, kind TEXT CHECK IN ('subscriber','app_only','unknown_app_user'), email_norm TEXT UNIQUE NULL, created_at TEXT)`. `profile_id` = `lower(hex(randomblob(16)))`, never derived from an email.
@@ -35,7 +35,8 @@ D1 migrations live in `migrations_dir` on the `d1_databases` entry. This is unre
 - `app_events(event_id TEXT PK, event TEXT, user_id TEXT NULL, device_id TEXT, ts TEXT, properties TEXT, received_at TEXT)`
 - `device_links(device_id TEXT, user_id TEXT, seen_at TEXT, PRIMARY KEY(device_id, seen_at, user_id))`
 - `segments`, `sessions` and `import_report` are described in their own sections.
-- Indexes: `web_events(visitor_id)`, `web_events(ts)`, `app_events(user_id)`, `app_events(device_id, ts)`, `subscribers(source)`, `subscribers(signup_date)`.
+- Indexes: `web_events(ts)`, `app_events(user_id)`, `app_events(device_id, ts)`, `subscribers(source)`, `subscribers(signup_date)`.
+- Migration 0003 (read indexes, see "D1 read budget" in Known limitations) adds `visitor_links(profile_id, visitor_id)`, `user_links(profile_id, user_id)`, `web_events(visitor_id, ts)` (replaces `web_events(visitor_id)`) and `app_events(ts)`.
 
 ### Import (`npm run import -- --local|--remote`)
 - `scripts/import.ts` (run with `tsx`) reads the three CSVs from `../data/`, builds parameter-safe SQL with the pure functions in `src/import/`, writes it to a temp file, and runs `wrangler d1 execute tpo-cdp --file <tmp> --local|--remote`.
@@ -392,6 +393,7 @@ The transcript must show all five:
 - **Tests:**
   - [workers] `test/lookup.spec.ts` and `test/segments.spec.ts`, except the cases that need the webhook, which are added in Phase 3.
   - [workers] the CSRF case in `test/security.spec.ts`.
+  - [workers] `test/rows-read.spec.ts`: seeds 1,500 profiles with visitors, web events and 300 app users, then asserts lookup by email and both segment previews each read at most 4 times the seeded rows (linear), using the pure recorder in `scripts/lib/rows-read.ts`.
 - **Live check:**
   - Look up a known subscriber by an email with different case and spaces; the profile shows site visits.
   - The brief's Instagram/30-day segment returns a count.
@@ -401,6 +403,7 @@ The transcript must show all five:
   - §4 in full: `Limiter` interface, `WEBHOOK_LIMITER` binding (rerun `npm run cf-typegen`), verify, validate, store, the `app_event_owner` view.
   - `scripts/send-events.ts`.
   - The webhook cases of §2 and §3 (an event appears in lookup, an anonymous event is flagged, a `read_story` changes the score and segment membership).
+  - The `app_event_owner` view, and every query that reads it (lookup app activity, engagement, score, `app_active_days`), must meet the same D1 read budget as Phase 2 (see Known limitations), checked by `npm run perf` with webhook events loaded. The view computes `owner_user_id` per event, so `o.owner_user_id = ul.user_id` cannot use an index; keep those queries proportional to the events in the window, not to profiles x events.
 - **Tests:**
   - [workers] `test/webhook.spec.ts`.
   - [workers] the webhook cases added to `test/lookup.spec.ts` and `test/segments.spec.ts`.
@@ -469,3 +472,14 @@ The transcript must show all five:
 - **Misreadings:** the model can misread a question into the wrong filters. Answers are templated from real results, so the numbers are right for the plan it chose, and the UI shows that plan so the user can catch a misreading.
 - **Sessions:** the sessions table grows until the next login cleanup runs.
 - **Scale:** D1 single-region writes and read-time joins are fine at this size but would need materialized links at scale.
+- **D1 read budget:** the free plan allows 5M rows read per day, and the live site hit it. Cause: `visitor_links.profile_id` and `user_links.profile_id` had no index, so every per-profile subquery (score, `min_site_visits`, `has_app`, lookup joins) was a full scan, which is quadratic in profiles, and the segment preview read profiles joined to subscribers four times (count, rows, by_source, by_status). Fixed by migration 0003 and by `previewSegment` making one pass over the matching profiles (source, status and score per row) and deriving the count, the chart groups and the top 50 in JS. The budget is under 25,000 rows read per UI call, measured with `npm run perf` on the local real-data D1 (2,931 profiles, 10,000 web events, no app events):
+
+| Call | Before | After |
+| --- | --- | --- |
+| lookup by email | 12 statements, 31,963 rows | 12 statements, 179 rows |
+| preview: instagram, not opened 30 days | 5 statements, 1,767,268 rows | 2 statements, 1,770 rows |
+| preview: no filters | 5 statements, 28,571,280 rows | 2 statements, 17,420 rows |
+| import report | 2 statements, 22 rows | 2 statements, 22 rows |
+| session gate | 1 row | 1 row |
+
+  An unfiltered preview still scores every profile, so its cost grows with profiles and in-window events (linear). The app side is not exercised by these numbers because `app_events` is empty locally; see the Phase 3 scope.
