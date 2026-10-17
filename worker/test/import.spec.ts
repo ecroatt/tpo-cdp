@@ -199,6 +199,83 @@ describe("import", () => {
 		expect(quoted?.email_raw).toBe("d.o'brien+tag@x.com");
 	});
 
+	it("stores web_events.ts as YYYY-MM-DDTHH:MM:SSZ for a zone-less CSV time read as UTC", async () => {
+		await runImport("2026-10-17T10:00:00Z");
+		const { results } = await env.tpo_cdp.prepare("SELECT ts FROM web_events").all<{ ts: string }>();
+		expect(results.length).toBeGreaterThan(0);
+		for (const r of results) expect(r.ts).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+		const one = await env.tpo_cdp
+			.prepare("SELECT ts FROM web_events WHERE visitor_id = ? AND page = ?")
+			.bind("v_2", "/home")
+			.first<{ ts: string }>();
+		expect(one?.ts).toBe("2026-08-05T09:00:00Z");
+	});
+
+	it("lets the earliest visit's email win when a visitor has two emails, and counts the conflict", async () => {
+		const subs = [
+			"email,signup_date,status,acquisition_source,last_open_date",
+			"a@x.com,2026-08-01,active,Google,",
+			"b@x.com,2026-08-02,active,Google,",
+		].join("\n");
+		const web = [
+			"visitor_id,page,timestamp,utm_source,email",
+			"v_c,/late,2026-08-05 10:00:00,,a@x.com",
+			"v_c,/early,2026-08-01 10:00:00,,B@x.com",
+			"v_c,/none,2026-08-09 10:00:00,,",
+		].join("\n");
+		const runAt = "2026-10-17T12:00:00Z";
+		await runImport(runAt, { subscribersCsv: subs, webEventsCsv: web, appUsersCsv: "user_id,email,created_at\n" });
+		const owner = await env.tpo_cdp
+			.prepare("SELECT p.email_norm FROM visitor_links l JOIN profiles p ON p.profile_id = l.profile_id WHERE l.visitor_id = ?")
+			.bind("v_c")
+			.first<{ email_norm: string }>();
+		expect(owner?.email_norm).toBe("b@x.com");
+		const r = await report(runAt);
+		expect(r.visitors_email_conflicts).toBe(1);
+		expect(r.visits_linked).toBe(3);
+	});
+
+	const emptyWeb = "visitor_id,page,timestamp,utm_source,email\n";
+	const emptyApp = "user_id,email,created_at\n";
+
+	it("round-trips newline, CR, quote and injection-looking values through the executed rendered SQL", async () => {
+		const tricky = "it's\nline2\rline3\"; DROP TABLE profiles;--";
+		const csvField = `"${tricky.replace(/"/g, '""')}"`;
+		const subs = `email,signup_date,status,acquisition_source,last_open_date\nq@x.com,2026-08-01,active,${csvField},\n`;
+		const input = { subscribersCsv: subs, webEventsCsv: emptyWeb, appUsersCsv: emptyApp };
+		const sql = renderSql(buildImportStatements(input, "2026-10-17T13:00:00Z").statements);
+		expect(sql.trimEnd().split("\n").every((line) => line.endsWith(";"))).toBe(true);
+		await env.tpo_cdp.exec(sql);
+		const row = await env.tpo_cdp
+			.prepare("SELECT source_raw FROM subscribers WHERE email_norm = ?")
+			.bind("q@x.com")
+			.first<{ source_raw: string }>();
+		expect(row?.source_raw).toBe(tricky);
+		expect(await count("profiles")).toBe(1);
+
+		// The bound form stores exactly the same value.
+		await reset();
+		await run(buildImportStatements(input, "2026-10-17T13:00:00Z").statements);
+		const bound = await env.tpo_cdp
+			.prepare("SELECT source_raw FROM subscribers WHERE email_norm = ?")
+			.bind("q@x.com")
+			.first<{ source_raw: string }>();
+		expect(bound?.source_raw).toBe(tricky);
+	});
+
+	it("strips NUL characters when rendering SQL (documented behavior of renderSql)", async () => {
+		const subs = "email,signup_date,status,acquisition_source,last_open_date\nn@x.com,2026-08-01,active,ab\u0000cd,\n";
+		const input = { subscribersCsv: subs, webEventsCsv: emptyWeb, appUsersCsv: emptyApp };
+		const sql = renderSql(buildImportStatements(input, "2026-10-17T14:00:00Z").statements);
+		expect(sql).not.toContain("\u0000");
+		await env.tpo_cdp.exec(sql);
+		const row = await env.tpo_cdp
+			.prepare("SELECT source_raw FROM subscribers WHERE email_norm = ?")
+			.bind("n@x.com")
+			.first<{ source_raw: string }>();
+		expect(row?.source_raw).toBe("abcd");
+	});
+
 	it("keeps an injection-looking value as data", () => {
 		const csv = "email,signup_date,status,acquisition_source,last_open_date\nx@y.com,2026-08-01,active,\"'); DROP TABLE profiles;--\",\n";
 		const plan = buildImportStatements({ subscribersCsv: csv, webEventsCsv: "visitor_id,page,timestamp,utm_source,email\n", appUsersCsv: "user_id,email,created_at\n" }, "2026-10-17T10:00:00Z");
