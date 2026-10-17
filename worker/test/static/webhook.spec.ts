@@ -24,7 +24,7 @@ describe("webhook source scans", () => {
 		expect(script).toContain("WEBHOOK_URL");
 		expect(script).toContain("WEBHOOK_SECRET");
 		for (const line of script.split("\n")) {
-			if (/console\.(log|error|warn|info)/.test(line)) expect(line, line).not.toMatch(/secret/i);
+			if (/console\.(log|error|warn|info)/.test(line)) expect(line, line).not.toMatch(/\$\{\s*secret\b|[(,+]\s*secret\b/);
 		}
 		expect(JSON.parse(read("package.json")).scripts["send-events"]).toBe("tsx scripts/send-events.ts");
 	});

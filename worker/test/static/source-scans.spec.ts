@@ -58,6 +58,8 @@ const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
 	"src/segments/filters.ts": ["marks(filters.sources.length)", "marks(filters.kind.length)"],
 	// previewSegment: the WHERE body from buildWhere and the constant SCORE_SQL. Nothing else.
 	"src/segments/query.ts": ["where.sql", "SCORE_SQL"],
+	// storeEvent: two constant guard fragments (string literals in the same file) spliced into its INSERT ... SELECT statements.
+	"src/webhook/store.ts": ["STORED_AS_SENT", "NO_LINK_YET"],
 };
 
 const SQL_WORDS = /\b(SELECT|INSERT|UPDATE|DELETE|VALUES|WITH|WHERE|FROM|AND|OR|JOIN|ORDER|SET|IN)\b/i;
@@ -283,6 +285,16 @@ describe("source scans", () => {
 		expect(isConstantSql(score![1])).toBe(true);
 		// A value interpolated next to the allowed ones is still caught.
 		expect(disallowedSqlInterpolations("db.prepare(`SELECT 1 WHERE ${where.sql} AND x = '${value}'`)", ["where.sql", "SCORE_SQL"])).toEqual(["value"]);
+	});
+
+	it("the webhook store guards are string literals, so the store.ts templates only splice constants", () => {
+		const store = readFileSync(join(root, "src/webhook/store.ts"), "utf8");
+		for (const name of ["STORED_AS_SENT", "NO_LINK_YET"]) {
+			const m = new RegExp(`const ${name} =\\s*([^;]*);`).exec(store);
+			expect(m, name).not.toBeNull();
+			expect(isConstantSql(m![1]), name).toBe(true);
+		}
+		expect(disallowedSqlInterpolations(store, ALLOWED_SQL_INTERPOLATIONS["src/webhook/store.ts"])).toEqual([]);
 	});
 
 	it("no TODO or FIXME in src/ or scripts/", () => {

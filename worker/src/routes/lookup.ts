@@ -109,6 +109,8 @@ async function profileView(db: D1Database, profileId: string): Promise<Response>
 		},
 		app_activity: {
 			total: eventTotal?.n ?? 0,
+			// The newest event time, MAX(ts): the list is sorted by event time, so it is the first entry.
+			last_seen: events.results[0]?.ts ?? null,
 			recent: events.results.map((e) => ({
 				event_id: e.event_id,
 				event: e.event,
