@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import worker from "../src";
 import { buildModelRequest } from "../src/assistant/prompt";
 import { ModelUnavailableError, PiiBlockedError, sendToModel } from "../src/assistant/model";
+import { normalizeEmail } from "../src/lib/email";
 import { scrubQuestion } from "../src/assistant/scrub";
 import { answerFor } from "../src/assistant/templates";
 import { validatePlan } from "../src/assistant/tools";
@@ -382,7 +383,11 @@ describe("PII never reaches the model", () => {
 			const sent = model.calls[0];
 			const lower = sent.body.toLowerCase();
 
-			for (const email of ALL_EMAILS) expect(lower.includes(email.trim().toLowerCase()), "an email reached the model").toBe(false);
+			for (const email of ALL_EMAILS) {
+				expect(sent.body.includes(email), "a raw email reached the model").toBe(false);
+				const normalized = normalizeEmail(email);
+				if (normalized !== null) expect(lower.includes(normalized), "an email reached the model").toBe(false);
+			}
 			for (const id of ALL_IDS) expect(lower.includes(id.toLowerCase()), "an id reached the model").toBe(false);
 			for (const name of ALL_NAME_LIKE) expect(lower.includes(name), "a name-like string reached the model").toBe(false);
 			expect(sent.body).not.toMatch(/[^\s@"]+@[^\s@"]+\.[^\s@"]+/);
