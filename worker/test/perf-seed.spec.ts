@@ -91,12 +91,20 @@ describe("applyPerfSeed", () => {
 		expect(first.events).toBe(seed.events.length);
 		expect(first.profiles).toBe(10);
 		expect(first.user_links).toBe(10);
+		// Profile ids are random 32-hex ids, never derived from the user_id, and a second run mints no more.
+		const ids = (await env.tpo_cdp.prepare("SELECT profile_id FROM profiles").all<{ profile_id: string }>()).results.map((r) => r.profile_id);
+		for (const id of ids) {
+			expect(id).toMatch(/^[0-9a-f]{32}$/);
+			expect(id).not.toContain("perf");
+		}
 		expect(first.app_users).toBe(10);
 		// Links are unique per (device, time, user), so same-second events on one device can share a row.
 		expect(first.links).toBeGreaterThan(seed.links.length * 0.95);
 		expect(first.links).toBeLessThanOrEqual(seed.links.length);
 		await applyPerfSeed(env.tpo_cdp, seed);
 		expect(await counts()).toEqual(first);
+		const again = (await env.tpo_cdp.prepare("SELECT profile_id FROM profiles").all<{ profile_id: string }>()).results.map((r) => r.profile_id);
+		expect(again.sort()).toEqual(ids.sort());
 	});
 });
 

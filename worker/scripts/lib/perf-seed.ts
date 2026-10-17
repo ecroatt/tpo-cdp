@@ -167,17 +167,25 @@ async function runBatches(db: D1Database, statements: D1PreparedStatement[]): Pr
  */
 export async function applyPerfSeed(db: D1Database, seed: PerfSeed): Promise<void> {
 	const created = `${TODAY}T00:00:00Z`;
-	await runBatches(
-		db,
-		seed.unknownUsers.flatMap((user, i) => {
-			const profileId = `perf_unknown_profile_${String(i).padStart(2, "0")}`;
-			return [
-				db.prepare("INSERT OR IGNORE INTO app_users (user_id, email_raw, email_norm, created_at, origin) VALUES (?, NULL, NULL, ?, 'webhook')").bind(user, TODAY),
-				db.prepare("INSERT OR IGNORE INTO profiles (profile_id, kind, email_norm, created_at) VALUES (?, 'unknown_app_user', NULL, ?)").bind(profileId, created),
-				db.prepare("INSERT OR IGNORE INTO user_links (user_id, profile_id) VALUES (?, ?)").bind(user, profileId),
-			];
-		}),
-	);
+	// Same shape as the webhook: the profile gets a random id and is only minted when no user_links row exists for the user,
+	// so a re-run adds nothing. The three statements of a user run in one batch so last_insert_rowid() is that profile.
+	for (const user of seed.unknownUsers) {
+		await runBatches(db, [
+			db.prepare("INSERT OR IGNORE INTO app_users (user_id, email_raw, email_norm, created_at, origin) VALUES (?, NULL, NULL, ?, 'webhook')").bind(user, TODAY),
+			db
+				.prepare(
+					"INSERT INTO profiles (profile_id, kind, email_norm, created_at) SELECT lower(hex(randomblob(16))), 'unknown_app_user', NULL, ? " +
+						"WHERE NOT EXISTS (SELECT 1 FROM user_links WHERE user_id = ?)",
+				)
+				.bind(created, user),
+			db
+				.prepare(
+					"INSERT OR IGNORE INTO user_links (user_id, profile_id) SELECT ?, profile_id FROM profiles WHERE rowid = last_insert_rowid() " +
+						"AND NOT EXISTS (SELECT 1 FROM user_links WHERE user_id = ?)",
+				)
+				.bind(user, user),
+		]);
+	}
 	await runBatches(
 		db,
 		seed.events.map((e) =>
