@@ -268,6 +268,103 @@ describe("rows, count and chart come from the real database", () => {
 	});
 });
 
+/** Rows go in a scrambled order on purpose: the order must come from the preview, not from insertion. */
+async function seedMany(rows: { id: string; source: string | null; status?: "active" | "unsubscribed"; open: string | null }[]) {
+	const statements = [];
+	for (const r of rows) {
+		const email = `${r.id}@x.com`;
+		statements.push(env.tpo_cdp.prepare("INSERT INTO profiles (profile_id, kind, email_norm, created_at) VALUES (?, 'subscriber', ?, '2026-09-01T00:00:00Z')").bind(r.id, r.source === null && r.status === undefined ? null : email));
+		if (r.source !== null || r.status !== undefined) {
+			statements.push(
+				env.tpo_cdp
+					.prepare("INSERT INTO subscribers (email_norm, email_raw, signup_date, status, source, source_raw, last_open_date) VALUES (?, ?, '2026-07-01', ?, ?, ?, ?)")
+					.bind(email, email, r.status ?? "active", r.source, r.source, r.open),
+			);
+		}
+	}
+	for (let i = 0; i < statements.length; i += 50) await env.tpo_cdp.batch(statements.slice(i, i + 50));
+}
+
+describe("preview ordering done in JS", () => {
+	beforeEach(resetAll);
+
+	it("score ties are broken by profile_id ascending", async () => {
+		// Open 2026-09-25 is 3 points, 2026-09-01 is 1 point (inside 30 days, before 7), never opened is 0.
+		await seedMany([
+			{ id: "t_c", source: "google", open: null },
+			{ id: "s_z", source: "google", open: "2026-09-25" },
+			{ id: "o_b", source: "google", open: "2026-09-01" },
+			{ id: "t_a", source: "google", open: null },
+			{ id: "s_b", source: "google", open: "2026-09-25" },
+			{ id: "o_a", source: "google", open: "2026-09-01" },
+			{ id: "t_b", source: "google", open: null },
+			{ id: "s_m", source: "google", open: "2026-09-25" },
+		]);
+		const result = await preview({});
+		expect(result.rows.map((r) => [r.profile_id, r.score])).toEqual([
+			["s_b", 3], ["s_m", 3], ["s_z", 3], ["o_a", 1], ["o_b", 1], ["t_a", 0], ["t_b", 0], ["t_c", 0],
+		]);
+	});
+
+	it("chart groups are ordered by count descending, then group name, with 'none' sorted like any name", async () => {
+		await seedMany([
+			{ id: "c1", source: "x", status: "unsubscribed", open: null },
+			{ id: "c2", source: "podcast", open: null },
+			{ id: "c3", source: "google", open: null },
+			{ id: "c4", source: "facebook", open: null },
+			{ id: "c5", source: "x", status: "unsubscribed", open: null },
+			{ id: "c6", source: "facebook", open: null },
+			{ id: "c7", source: "instagram", open: null },
+			{ id: "c8", source: "google", open: null },
+			{ id: "c9", source: "facebook", open: null },
+		]);
+		// Two profiles without a newsletter row: source 'none' and status 'none'.
+		await addProfile("n1", "app_only", "n1@y.com");
+		await addProfile("n2", "app_only", "n2@y.com");
+		const result = await preview({});
+		expect(result.count).toBe(11);
+		// facebook 3; then a three-way tie at 2 (google, none, x); then a tie at 1 (instagram, podcast).
+		expect(result.chart.by_source).toEqual([
+			{ group: "facebook", count: 3 },
+			{ group: "google", count: 2 },
+			{ group: "none", count: 2 },
+			{ group: "x", count: 2 },
+			{ group: "instagram", count: 1 },
+			{ group: "podcast", count: 1 },
+		]);
+		// active 7; then a tie at 2 where 'none' comes before 'unsubscribed'.
+		expect(result.chart.by_status).toEqual([
+			{ group: "active", count: 7 },
+			{ group: "none", count: 2 },
+			{ group: "unsubscribed", count: 2 },
+		]);
+	});
+
+	it("with more than 50 matches the 50 returned are the highest scorers in order and the count is the full total", async () => {
+		const pad = (n: number) => String(n).padStart(2, "0");
+		const rows: Parameters<typeof seedMany>[0] = [];
+		// Lowest scorers (0) have ids that sort first.
+		for (let i = 0; i < 5; i++) rows.push({ id: `a_${i}`, source: "google", open: null });
+		// 35 profiles at 1 point; only h_00..h_29 fit.
+		for (let i = 34; i >= 0; i--) rows.push({ id: `h_${pad(i)}`, source: "google", open: "2026-09-01" });
+		// 20 profiles at 3 points with ids that sort last.
+		for (let i = 19; i >= 0; i--) rows.push({ id: `z_${pad(i)}`, source: "google", open: "2026-09-25" });
+		await seedMany(rows);
+		const result = await preview({});
+		expect(result.count).toBe(60);
+		expect(result.rows).toHaveLength(50);
+		const expected = [
+			...Array.from({ length: 20 }, (_, i) => `z_${pad(i)}`),
+			...Array.from({ length: 30 }, (_, i) => `h_${pad(i)}`),
+		];
+		expect(result.rows.map((r) => r.profile_id)).toEqual(expected);
+		const returned = new Set(result.rows.map((r) => r.profile_id));
+		for (let i = 0; i < 5; i++) expect(returned.has(`a_${i}`)).toBe(false);
+		for (let i = 30; i < 35; i++) expect(returned.has(`h_${pad(i)}`)).toBe(false);
+		expect(result.chart.by_source).toEqual([{ group: "google", count: 60 }]);
+	});
+});
+
 describe("twitter and X are one source", () => {
 	beforeEach(resetAll);
 

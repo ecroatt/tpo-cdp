@@ -19,6 +19,16 @@ const VISITS_PER_VISITOR = 2;
  */
 const BUDGET_FACTOR = 4;
 
+/**
+ * Lookup budget: LOOKUP_FACTOR x the rows the looked-up profile owns (its visitor_links, user_links, web_events,
+ * app_users and app_events rows) + LOOKUP_OVERHEAD for the resolve, profile and subscriber statements. Each owned row
+ * may be read a few times (an index entry, the table row, and a count and a list query over it), so 10 is generous.
+ * It does not grow with the table sizes, so a lookup that scans visitor_links or user_links (for example because
+ * visitor_links(profile_id) or user_links(profile_id) lost its index) reads 1,500 or 300 rows per statement and fails.
+ */
+const LOOKUP_FACTOR = 10;
+const LOOKUP_OVERHEAD = 30;
+
 const BASE = "https://cdp.test";
 let cookie = "";
 let seeded = 0;
@@ -73,9 +83,14 @@ async function rowsReadBy(path: string, body?: unknown): Promise<{ status: numbe
 
 describe("D1 rows read stay linear in the data", () => {
 	it("lookup by email", async () => {
-		const { status, rows } = await rowsReadBy("/api/lookup?q=" + encodeURIComponent("U700@X.com"));
+		// Lookup reads what one profile owns, not the whole database. u100 is p100: 1 visitor_links row,
+		// 2 web_events, 1 user_links row and 1 app_users row (no app events), so 5 owned rows.
+		const owned = 1 + VISITS_PER_VISITOR + 1 + 1;
+		const { status, rows } = await rowsReadBy("/api/lookup?q=" + encodeURIComponent("U100@X.com"));
 		expect(status).toBe(200);
-		expect(rows).toBeLessThanOrEqual(BUDGET_FACTOR * seeded);
+		expect(rows).toBeLessThanOrEqual(LOOKUP_FACTOR * owned + LOOKUP_OVERHEAD);
+		// Guard against a budget so loose that a scan of visitor_links (1,500 rows) would pass.
+		expect(LOOKUP_FACTOR * owned + LOOKUP_OVERHEAD).toBeLessThan(PROFILES);
 	});
 
 	it("preview with no filters", async () => {
