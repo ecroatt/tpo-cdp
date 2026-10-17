@@ -1,9 +1,10 @@
 # TPO mini CDP: plan notes for Claude Code
 
-Input for the SPEC.md interview. The assessment brief is `TPO_Developer_Assessment.pdf`; these notes are my decisions and what I found in the data. Where they conflict, the PDF wins. Items marked OPEN still need my decision.
+Input for the SPEC.md interview. The assessment brief is `TPO_Developer_Assessment.pdf`; these notes are my decisions and what I found in the data. Where they conflict, the PDF wins. All the OPEN calls were decided on Sat Oct 17 (see "My calls").
 
 ## Constraints
-- Due with my application by Mon Oct 19, 2026; I plan to turn it in Sun Oct 18. About 10 hours total, mostly Saturday.
+- Due with my application by Mon Oct 19, 2026; I plan to turn it in Sun Oct 18. Saturday Oct 17: start ~10:15, aim to finish ~6:30 pm, hard stop 7 pm. Sunday: ~2 hours (final audit, Loom, submit).
+- Submission is one folder link (Google Drive, OneDrive or Dropbox, view access) holding a submission doc (live URL, webhook URL, repo link, UI password, raw audit output, Loom link) plus my resume. The repo goes public at submission.
 - Treat 2026-09-28 as "today" for anything time-based.
 - Stack: Cloudflare Workers (TypeScript) + D1 + wrangler, GitHub Actions (test on PR, test + deploy on main). Same stack as my Grounds project.
 - Build in order: Req 1 > 2 > 3 > 4 > 5 > extras. Extras only after all five work live.
@@ -24,6 +25,10 @@ Input for the SPEC.md interview. The assessment brief is `TPO_Developer_Assessme
 - Link app users: user_id -> profile by normalized email; no match -> app-only profile.
 - Link at read time, not write time: keep raw rows, join through link tables when queried.
 
+## Loading the CSVs
+- Import script (`npm run import`), not an upload page. Idempotent: running it twice gives the same counts and creates no duplicates.
+- The CSVs are gitignored (they contain names and emails). data/README.md tells reviewers to put the three assessment CSVs there.
+
 ## Tables (D1)
 profiles, subscribers, web_events, visitor_links, app_users, app_events (event_id PK), device_links (device_id -> user_id), import_report.
 
@@ -34,6 +39,7 @@ profiles, subscribers, web_events, visitor_links, app_users, app_events (event_i
 - Out of order: store the event's own timestamp; always sort by event time; "last seen" = max event time.
 - Login stitching: any event with device_id + user_id writes device_links; profile = events with that user_id OR any linked device_id (works even when anonymous events arrive after the login).
 - Unknown user_id: create app_users row + "unknown app user" profile.
+- Reviewer access: the live WEBHOOK_SECRET is NOT shared. The webhook is shown live in the Loom; reviewers test it locally with their own secret via the README and `npm run send-events`.
 - Event simulator script (`npm run send-events`): signs and sends realistic events incl. duplicates, out-of-order, anonymous-then-login.
 - Tests: bad signature, old timestamp, duplicate, out of order, anonymous then login, unknown user, bad event type.
 
@@ -45,22 +51,22 @@ profiles, subscribers, web_events, visitor_links, app_users, app_events (event_i
 - Browser swaps profile_ids for emails via the protected API; emails never go back into the model conversation.
 - "What the AI saw" toggle shows the exact request for each answer.
 - Must handle the PDF's examples: "how many Instagram signups went cold last month?", "build me a list of our most engaged readers", "which pages do new subscribers hit first?"
-- Model: OPEN. Workers AI (free, ~12-16 questions/day, weaker tool use) or Claude Haiku 5.5 (~$0.0025/question, $5 credit). Keep provider behind sendToModel().
+- Model: Claude Haiku 5.5 via the Anthropic API (~$0.0025/question). Key in `wrangler secret` as ANTHROPIC_API_KEY, spend limit set in the Console. Provider stays behind sendToModel().
 
 ## UI
-- Password protection: OPEN. Cloudflare Access (allow-listed emails, one-time code) or one shared password checked by the Worker.
+- Password protection: one shared password checked by the Worker. Stored as a Worker secret (UI_PASSWORD), constant-time compare, HttpOnly + Secure session cookie. It protects the pages AND every /api route (only /webhooks/app is outside it, protected by HMAC). In production I'd use Cloudflare Access instead; say so in SECURITY.md and README.
 - Pages: lookup (newsletter info, site visits, app activity on one screen), segments (filters, count, list, chart), assistant.
 - Carry over from Grounds: CSP + security headers, generic errors, no emails in logs, .bind() everywhere.
 
 ## Extras (after the five work)
 - Lead: chart answers (assistant + segments) with Chart.js.
-- Pick 1-2 (OPEN): reader health tiers, source quality scorecard, identity timeline, segment CSV export, live event feed, data quality page, save answer as segment.
+- Second extra: save answer as segment (a button on any assistant answer saves it as a reusable segment). A third only if time is left. Cut first if behind.
 
 ## Claude Code setup to create
 - Subagents: verifier, security-reviewer, pii-auditor, tutor.
 - Skills: /pre-audit (runs the PDF's audit prompt and lists fixes), /ai-was-wrong (appends to AI_LOG.md).
 - Stop hook: run `npm test`. Keep the secret-file PreToolUse hook from Grounds.
-- Repo docs: README (run locally, deploy, signed curl example), SECURITY.md, DECISIONS.md, AI_LOG.md.
+- Repo docs: README (run locally, deploy, how to sign and send an event with your own secret), SECURITY.md, DECISIONS.md, AI_LOG.md.
 
 ## Setup
   "d1_databases": [
@@ -70,3 +76,11 @@ profiles, subscribers, web_events, visitor_links, app_users, app_events (event_i
       "database_id": "4584d2ec-bd1a-4927-aada-b75ee717b407"
     }
   ]
+
+## My calls (Sat Oct 17)
+- AI model: Claude Haiku 5.5. Better answers in front of reviewers, and room to test a lot without a daily cap.
+- UI login: shared password, because the PDF says basic password protection is fine and it's the easiest thing to hand reviewers. Production: Cloudflare Access.
+- Second extra: save answer as segment, so a teammate can reuse a list instead of asking again.
+- CSV loading: import script. The CSVs are a one-time load; a script is quicker to build and test, doubles as the README setup step, and skips an upload endpoint that needs its own security.
+- Webhook secret: not shared with reviewers, for security. Live demo in the Loom; local testing with their own secret.
+- CSVs kept out of git (removed from history Oct 17) since the repo goes public.
