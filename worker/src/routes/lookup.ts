@@ -1,5 +1,7 @@
 import { json } from "../http/security";
 import { normalizeEmail } from "../lib/email";
+import { ownedActivity } from "../lib/owned-events";
+import { LAST_30_START } from "../lib/time";
 import { engagementFor } from "../segments/engagement";
 import { daysSinceOpen, isCold } from "../segments/definitions";
 
@@ -75,19 +77,8 @@ async function profileView(db: D1Database, profileId: string): Promise<Response>
 		)
 		.bind(profileId)
 		.all();
-	const eventTotal = await db
-		.prepare("SELECT COUNT(*) AS n FROM user_links ul JOIN app_event_owner o ON o.owner_user_id = ul.user_id WHERE ul.profile_id = ?")
-		.bind(profileId)
-		.first<{ n: number }>();
-	const events = await db
-		.prepare(
-			"SELECT o.event_id, o.event, o.ts, o.device_id, o.owner_user_id AS user_id, o.properties, o.attributed_from_device " +
-				"FROM user_links ul JOIN app_event_owner o ON o.owner_user_id = ul.user_id " +
-				"WHERE ul.profile_id = ? ORDER BY o.ts DESC, o.event_id DESC LIMIT 100",
-		)
-		.bind(profileId)
-		.all<{ event_id: string; event: string; ts: string; device_id: string; user_id: string; properties: string; attributed_from_device: number }>();
-	const engagement = await engagementFor(db, profileId, subscriber?.last_open_date ?? null);
+	const activity = await ownedActivity(db, profileId, LAST_30_START, RECENT_LIMIT);
+	const engagement = await engagementFor(db, profileId, subscriber?.last_open_date ?? null, activity.windowPoints);
 
 	return json({
 		profile_id: profile.profile_id,
@@ -108,10 +99,10 @@ async function profileView(db: D1Database, profileId: string): Promise<Response>
 			recent: visits.results,
 		},
 		app_activity: {
-			total: eventTotal?.n ?? 0,
+			total: activity.total,
 			// The newest event time, MAX(ts): the list is sorted by event time, so it is the first entry.
-			last_seen: events.results[0]?.ts ?? null,
-			recent: events.results.map((e) => ({
+			last_seen: activity.recent[0]?.ts ?? null,
+			recent: activity.recent.map((e) => ({
 				event_id: e.event_id,
 				event: e.event,
 				ts: e.ts,

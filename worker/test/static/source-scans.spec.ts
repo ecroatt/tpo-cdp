@@ -57,7 +57,9 @@ const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
 	// buildWhere: `?` lists whose length the validator bounds. Every value is a bind.
 	"src/segments/filters.ts": ["marks(filters.sources.length)", "marks(filters.kind.length)"],
 	// previewSegment: the WHERE body from buildWhere and the constant SCORE_SQL. Nothing else.
-	"src/segments/query.ts": ["where.sql", "SCORE_SQL"],
+	"src/segments/query.ts": ["where.sql", "SCORE_SQL", "APP_POINTS_CTE"],
+	// ownedActivity / ownedWindowPoints: two constants defined in the same file (string literals joined by +).
+	"src/lib/owned-events.ts": ["OWNED_EVENTS_CTE", "POINTS_IF_IN_WINDOW"],
 	// storeEvent: two constant guard fragments (string literals in the same file) spliced into its INSERT ... SELECT statements.
 	"src/webhook/store.ts": ["STORED_AS_SENT", "NO_LINK_YET"],
 };
@@ -283,6 +285,16 @@ describe("source scans", () => {
 		const score = /export const SCORE_SQL =\s*([^;]*);/.exec(engagement);
 		expect(score).not.toBeNull();
 		expect(isConstantSql(score![1])).toBe(true);
+		const appCte = /export const APP_POINTS_CTE =s*([^;]*);/.exec(engagement);
+		expect(appCte).not.toBeNull();
+		expect(isConstantSql(appCte![1])).toBe(true);
+		const owned = readFileSync(join(root, "src/lib/owned-events.ts"), "utf8");
+		for (const name of ["OWNED_EVENTS_CTE", "POINTS_IF_IN_WINDOW"]) {
+			const m = new RegExp(`const ${name} =\\s*([^;]*);`).exec(owned);
+			expect(m, name).not.toBeNull();
+			expect(isConstantSql(m![1]), name).toBe(true);
+		}
+		expect(disallowedSqlInterpolations(owned, ALLOWED_SQL_INTERPOLATIONS["src/lib/owned-events.ts"])).toEqual([]);
 		// A value interpolated next to the allowed ones is still caught.
 		expect(disallowedSqlInterpolations("db.prepare(`SELECT 1 WHERE ${where.sql} AND x = '${value}'`)", ["where.sql", "SCORE_SQL"])).toEqual(["value"]);
 	});

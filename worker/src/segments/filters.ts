@@ -138,9 +138,13 @@ const NOT_OPENED_SQL = "(s.last_open_date < ? OR (s.last_open_date IS NULL AND s
 
 const HAS_APP_SQL = "EXISTS (SELECT 1 FROM user_links ul WHERE ul.profile_id = p.profile_id)";
 
+/**
+ * Profiles with an owned app event dated on or after the bound date. Not correlated, so it runs once for the whole query
+ * (one pass over the events in the window) and not once per profile. Bind: the cutoff date.
+ */
 const APP_ACTIVE_SQL =
-	"EXISTS (SELECT 1 FROM user_links ul JOIN app_event_owner o ON o.owner_user_id = ul.user_id " +
-	"WHERE ul.profile_id = p.profile_id AND o.ts >= ?)";
+	"p.profile_id IN (SELECT ul.profile_id FROM user_links ul WHERE ul.user_id IN " +
+	"(SELECT o.owner_user_id FROM app_event_owner o WHERE o.ts >= ?))";
 
 const SITE_VISITS_SQL =
 	"(SELECT COUNT(*) FROM visitor_links vl JOIN web_events w ON w.visitor_id = vl.visitor_id " +

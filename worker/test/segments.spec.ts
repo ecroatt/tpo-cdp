@@ -628,7 +628,8 @@ describe("webhook events and segments", () => {
 		// A read_story is worth 2 points: 1 + 2 = 3, in both the preview and the lookup.
 		expect(await scoreOf("go_21")).toBe(3);
 		expect(ids(await preview({ app_active_days: 30 }))).toEqual(["go_21"]);
-		expect(ids(await preview({ app_active_days: 1 }))).toEqual([]);
+		// 1 day back is 2026-09-27, and the event is dated that day, so it counts.
+		expect(ids(await preview({ app_active_days: 1 }))).toEqual(["go_21"]);
 		const lookupAfter = (await (await call("/api/lookup?q=u_w", {}, cookie)).json()) as any;
 		expect(lookupAfter.engagement.score).toBe(3);
 		expect(lookupAfter.engagement.breakdown).toEqual({ newsletter: 1, site: 0, app: 2 });

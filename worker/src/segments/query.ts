@@ -1,4 +1,4 @@
-import { SCORE_BINDS, SCORE_SQL } from "./engagement";
+import { APP_POINTS_BINDS, APP_POINTS_CTE, SCORE_BINDS, SCORE_SQL } from "./engagement";
 import { buildWhere, type Filters } from "./filters";
 
 export interface PreviewRow {
@@ -39,18 +39,19 @@ function toGroups(counts: Map<string, number>): Group[] {
  * One pass over the matching profiles returns each profile's source, status and score; the count, the chart
  * groups and the top 50 are derived from those rows here, so D1 reads the profiles and subscribers once
  * instead of once per figure and without a sort. The only interpolations are `where.sql` (fixed fragments
- * from buildWhere) and SCORE_SQL (a constant).
+ * from buildWhere), SCORE_SQL and APP_POINTS_CTE (constants).
  */
 export async function previewSegment(db: D1Database, filters: Filters): Promise<Preview> {
 	const where = buildWhere(filters);
 	const { results } = await db
 		.prepare(
-			`SELECT p.profile_id AS profile_id, p.email_norm AS email, s.source AS source, s.status AS status,
+			`${APP_POINTS_CTE} SELECT p.profile_id AS profile_id, p.email_norm AS email, s.source AS source, s.status AS status,
 				s.signup_date AS signup, s.last_open_date AS last_open, ${SCORE_SQL} AS score
 			FROM profiles p LEFT JOIN subscribers s ON s.email_norm = p.email_norm
+			LEFT JOIN a ON a.profile_id = p.profile_id
 			WHERE ${where.sql}`,
 		)
-		.bind(...SCORE_BINDS, ...where.binds)
+		.bind(...APP_POINTS_BINDS, ...SCORE_BINDS, ...where.binds)
 		.all<PreviewRow>();
 	const bySource = new Map<string, number>();
 	const byStatus = new Map<string, number>();
