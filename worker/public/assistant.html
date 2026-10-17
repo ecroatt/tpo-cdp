@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Assistant - TPO CDP</title>
+		<link rel="stylesheet" href="/style.css" />
+	</head>
+	<body>
+		<header>
+			<h1>TPO CDP</h1>
+			<nav>
+				<a href="/">Home</a>
+				<a href="/lookup">Lookup</a>
+				<a href="/segments">Segments</a>
+				<a href="/assistant">Assistant</a>
+			</nav>
+			<form method="post" action="/logout">
+				<button type="submit">Sign out</button>
+			</form>
+		</header>
+		<main>
+			<h2>Assistant</h2>
+			<p>Ask about the audience as a whole, for example "How many Instagram signups went cold last month?". Individual lookups belong on the <a href="/lookup">Lookup page</a>. Emails and ids are removed from your question before the AI sees it.</p>
+			<form id="ask">
+				<label>Your question
+					<textarea id="question" name="question" rows="3" maxlength="500" required></textarea>
+				</label>
+				<button type="submit">Ask</button>
+			</form>
+			<p id="status"></p>
+			<section id="answer-box" hidden>
+				<h3>Answer</h3>
+				<p id="answer"></p>
+				<p id="unsupported-help" hidden></p>
+				<h3>How I read your question</h3>
+				<pre id="plan"></pre>
+				<div class="chart-box"><canvas id="chart" hidden></canvas></div>
+				<div id="results"></div>
+				<details id="ai-saw">
+					<summary>What the AI saw</summary>
+					<p>This is the exact request sent to the AI. It holds your question with emails and ids removed, and never any results.</p>
+					<pre id="model-request"></pre>
+				</details>
+			</section>
+		</main>
+		<script src="/vendor/chart.umd.min.js"></script>
+		<script type="module" src="/assistant.js"></script>
+	</body>
+</html>
