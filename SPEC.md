@@ -227,7 +227,7 @@ One validated filter object is shared by the Segments page, the assistant tools 
    - ID patterns (`u_…`, `d_…`, `v_…`, 32-hex profile_ids) are replaced with `[id]`.
    - The UI tells the user that individual lookups belong on the Lookup page.
 2. **One-shot plan.** There is exactly one model call per question, to Claude Haiku 5.5 (`claude-haiku-5-5`) through the Anthropic Messages API:
-   - Settings: temperature 0, `max_tokens` 512.
+   - Settings: `max_tokens` 512, and no `temperature`, `top_p` or `top_k` (Claude Haiku 5.5 rejects any non-default sampling parameter with a 400). The forced tool call and the fixed answer templates keep the output deterministic in shape.
    - The request uses `tools` with `tool_choice: {type: "any"}`, so the model must reply with exactly one tool call, which is the plan `{tool, params}`. Any text it adds alongside the call is ignored.
    - **System prompt:** the role, `TODAY` and the shared definitions from §0, the allowed filter keys and values, the profile kinds, the page list, and the event types. It contains no rows.
    - The server validates the plan, runs it, and builds the answer sentence from a fixed template for each tool, e.g. "312 profiles match: Instagram, signed up 2026-08-01 to 2026-08-31, cold." The model never sees results, so it never writes the answer.

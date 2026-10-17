@@ -71,7 +71,9 @@ describe("buildModelRequest", () => {
 	it("has the fixed settings and a forced tool call", () => {
 		expect(body.model).toBe("claude-haiku-5-5");
 		expect(body.max_tokens).toBe(512);
-		expect(body.temperature).toBe(0);
+		expect("temperature" in body).toBe(false);
+		expect("top_p" in body).toBe(false);
+		expect("top_k" in body).toBe(false);
 		expect(body.tool_choice).toEqual({ type: "any" });
 		expect(body.messages).toEqual([{ role: "user", content: "How many people signed up?" }]);
 	});
@@ -575,6 +577,21 @@ describe("POST /api/assistant through the Worker", () => {
 		expect(response.status).toBe(502);
 		expect(await response.json()).toEqual({ error: "assistant_unavailable" });
 		expect(response.headers.get("Content-Security-Policy")).not.toBeNull();
+	});
+
+	it("a 400 from the model gives 502 and logs only the status and error type, never the key or the question", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		const apiError = { type: "error", error: { type: "invalid_request_error", message: "x" } };
+		vi.stubGlobal("fetch", scriptedModel({ response: new Response(JSON.stringify(apiError), { status: 400 }) }).fetch);
+		const response = await postJson("/api/assistant", { question: Q1.question }, cookie);
+		expect(response.status).toBe(502);
+		expect(await response.json()).toEqual({ error: "assistant_unavailable" });
+		const logged = errors.mock.calls.map((args) => args.map((a) => String(a)).join(" "));
+		expect(logged.some((line) => line.includes("400") && line.includes("invalid_request_error"))).toBe(true);
+		const everything = JSON.stringify(errors.mock.calls) + logged.join("\n");
+		expect(everything.includes(FAKE_KEY)).toBe(false);
+		expect(everything.includes(Q1.question)).toBe(false);
+		errors.mockRestore();
 	});
 
 	it("an unexpected failure returns the generic 500 with no stack trace and logs only the class", async () => {
