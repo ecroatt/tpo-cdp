@@ -54,6 +54,10 @@ const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
 		'part.map(() => "(?, ?)").join(", ")',
 		"select",
 	],
+	// buildWhere: `?` lists whose length the validator bounds. Every value is a bind.
+	"src/segments/filters.ts": ["marks(filters.sources.length)", "marks(filters.kind.length)"],
+	// previewSegment: the WHERE body from buildWhere and the constant SCORE_SQL. Nothing else.
+	"src/segments/query.ts": ["where.sql", "SCORE_SQL"],
 };
 
 const SQL_WORDS = /\b(SELECT|INSERT|UPDATE|DELETE|VALUES|WITH|WHERE|FROM|AND|OR|JOIN|ORDER|SET|IN)\b/i;
@@ -257,6 +261,28 @@ describe("source scans", () => {
 
 		expect(dbMetricsIsConstant('const dbMetrics: [string, string][] = [\n\t["a", "SELECT 1 " + "FROM t"],\n\t];')).toBe(true);
 		expect(dbMetricsIsConstant('const dbMetrics: [string, string][] = [\n\t["a", userSql],\n\t];')).toBe(false);
+	});
+
+	it("the buildWhere fragment builder is the only dynamic SQL, and it is built from fixed fragments", () => {
+		const filters = readFileSync(join(root, "src/segments/filters.ts"), "utf8");
+		const query = readFileSync(join(root, "src/segments/query.ts"), "utf8");
+		const engagement = readFileSync(join(root, "src/segments/engagement.ts"), "utf8");
+		expect(disallowedSqlInterpolations(filters, ALLOWED_SQL_INTERPOLATIONS["src/segments/filters.ts"]).sort()).toEqual([]);
+		expect(disallowedSqlInterpolations(query, ALLOWED_SQL_INTERPOLATIONS["src/segments/query.ts"])).toEqual([]);
+		expect(query).toContain("buildWhere(");
+		expect(query).toContain("${where.sql}");
+		// marks() emits only "?" and the fixed fragments are plain string literals.
+		expect(filters).toMatch(/Array\.from\(\{ length: count \}, \(\) => "\?"\)\.join\(", "\)/);
+		for (const name of ["COLD_SQL", "NOT_OPENED_SQL", "HAS_APP_SQL", "APP_ACTIVE_SQL", "SITE_VISITS_SQL"]) {
+			const m = new RegExp(`const ${name} =\s*([^;]*);`).exec(filters);
+			expect(m, name).not.toBeNull();
+			expect(isConstantSql(m![1]), name).toBe(true);
+		}
+		const score = /export const SCORE_SQL =\s*([^;]*);/.exec(engagement);
+		expect(score).not.toBeNull();
+		expect(isConstantSql(score![1])).toBe(true);
+		// A value interpolated next to the allowed ones is still caught.
+		expect(disallowedSqlInterpolations("db.prepare(`SELECT 1 WHERE ${where.sql} AND x = '${value}'`)", ["where.sql", "SCORE_SQL"])).toEqual(["value"]);
 	});
 
 	it("no TODO or FIXME in src/ or scripts/", () => {

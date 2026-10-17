@@ -3,6 +3,8 @@ import { hasValidSession } from "./auth/session";
 import { csrfCheck } from "./http/csrf";
 import { json, withSecurityHeaders } from "./http/security";
 import { handleImportReport } from "./routes/import-report";
+import { handleLookup } from "./routes/lookup";
+import { handlePreview } from "./routes/segments";
 
 /** Reachable without a session. Everything else goes through the gate. */
 const PUBLIC_PATHS = new Set(["/login", "/login.css", "/webhooks/app"]);
@@ -25,6 +27,8 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 
 	if (path === "/logout") return handleLogout(request, env);
 	if (path === "/api/import-report" && request.method === "GET") return handleImportReport(env);
+	if (path === "/api/lookup" && request.method === "GET") return handleLookup(env, url);
+	if (path === "/api/segments/preview" && request.method === "POST") return handlePreview(request, env);
 	if (path.startsWith("/api/") || path === "/webhooks/app") return json({ error: "not_found" }, 404);
 
 	return env.ASSETS.fetch(request);
