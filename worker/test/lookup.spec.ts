@@ -164,6 +164,41 @@ describe("lookup", () => {
 		}
 	});
 
+	it("keeps the 100 newest rows and drops the oldest when over the cap", async () => {
+		const statements = [];
+		for (let i = 0; i < 105; i++) {
+			const ts = `2026-09-${String(1 + Math.floor(i / 10)).padStart(2, "0")}T${String(i % 10).padStart(2, "0")}:00:00Z`;
+			statements.push(
+				env.tpo_cdp.prepare("INSERT INTO web_events (visitor_id, page, ts) VALUES (?, ?, ?)").bind("v_j1", `/bulk/${i}`, ts),
+				env.tpo_cdp
+					.prepare("INSERT INTO app_events (event_id, event, user_id, device_id, ts, properties, received_at) VALUES (?, 'app_open', 'u_jane', 'd_j', ?, '{}', ?)")
+					.bind(`bulk_${i}`, ts, ts),
+			);
+		}
+		await env.tpo_cdp.batch(statements);
+		const body = (await (await lookup("p_jane")).json()) as any;
+		const visits = body.site_visits.recent.map((x: any) => x.ts);
+		const events = body.app_activity.recent.map((x: any) => x.ts);
+		expect(visits[0]).toBe("2026-09-12T08:00:00Z");
+		expect(events[0]).toBe("2026-09-25T10:00:00Z");
+		// 108 rows each; the 100th newest is 2026-09-01T08, so only 09-01T00..T07 are dropped.
+		expect(visits[99]).toBe("2026-09-01T08:00:00Z");
+		expect(events[99]).toBe("2026-09-01T08:00:00Z");
+		for (let h = 0; h < 8; h++) {
+			const dropped = `2026-09-01T0${h}:00:00Z`;
+			expect(visits).not.toContain(dropped);
+			expect(events).not.toContain(dropped);
+		}
+	});
+
+	it("returns 404 not_found for an empty q and a whitespace-only q", async () => {
+		for (const path of ["/api/lookup?q=", "/api/lookup?q=%20%20"]) {
+			const response = await call(path, {}, cookie);
+			expect(response.status, path).toBe(404);
+			expect(await response.json(), path).toEqual({ error: "not_found" });
+		}
+	});
+
 	it("has no newsletter block for a profile without a subscriber row", async () => {
 		await addProfile("p_unknown", "unknown_app_user", null);
 		await addAppUser("u_unknown", "p_unknown", null);

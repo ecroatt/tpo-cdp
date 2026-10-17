@@ -329,6 +329,20 @@ describe("invalid filters", () => {
 		expect(notJson.status).toBe(400);
 	});
 
+	it("rejects a top-level body of null, an array, a string or a number", async () => {
+		for (const body of [null, [], "x", 42]) {
+			const response = await postJson("/api/segments/preview", body, cookie);
+			expect(response.status, JSON.stringify(body)).toBe(400);
+		}
+	});
+
+	it("rejects non-integer and string values for app_active_days and min_site_visits", async () => {
+		for (const filters of [{ app_active_days: 1.5 }, { app_active_days: "7" }, { min_site_visits: 2.5 }, { min_site_visits: "2" }]) {
+			const response = await bad(filters);
+			expect(response.status, JSON.stringify(filters)).toBe(400);
+		}
+	});
+
 	it("accepts the boundary values", async () => {
 		for (const filters of [{ not_opened_days: 1 }, { not_opened_days: 365 }, { app_active_days: 365 }, { min_site_visits: 0 }, { min_site_visits: 10000 }, { signup_from: "2026-09-01", signup_to: "2026-09-01" }]) {
 			expect((await bad(filters)).status, JSON.stringify(filters)).toBe(200);
