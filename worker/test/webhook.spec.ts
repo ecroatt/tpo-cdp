@@ -547,3 +547,43 @@ describe("storage and attribution", () => {
 		]);
 	});
 });
+
+describe("security headers and generic errors on the webhook", () => {
+	const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+
+	function expectHardeningHeaders(response: Response): void {
+		expect(response.headers.get("Content-Security-Policy")).toBe(CSP);
+		expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+		expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+		expect(response.headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
+	}
+
+	it("A stored 200 carries the section 8 headers", async () => {
+		const response = await postWebhook(makeEvent());
+		expect(response.status).toBe(200);
+		expectHardeningHeaders(response);
+	});
+
+	it("The bare 401 carries the section 8 headers and still has an empty body", async () => {
+		const response = await postWebhook(makeEvent(), { signature: BAD_SIGNATURE });
+		expect(response.status).toBe(401);
+		expectHardeningHeaders(response);
+		expect(await response.text()).toBe("");
+	});
+
+	it("A database failure gives 500 with exactly {\"error\":\"internal\"}, no stack text and the headers", async () => {
+		const broken = {
+			prepare: () => ({ bind: () => ({}) }),
+			batch: async () => {
+				throw new Error("SQLITE_ERROR: no such table: app_events\n    at Object.run (/secret/path/store.ts:12:34)");
+			},
+		};
+		const failing = { ...env, tpo_cdp: broken } as unknown as Env;
+		const response = await postWebhook(makeEvent(), { env: failing });
+		expect(response.status).toBe(500);
+		const text = await response.text();
+		expect(text).toBe('{"error":"internal"}');
+		expect(text).not.toMatch(/SQLITE|\bat\b|store\.ts|secret/);
+		expectHardeningHeaders(response);
+	});
+});
