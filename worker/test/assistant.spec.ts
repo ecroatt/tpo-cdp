@@ -39,7 +39,10 @@ async function ask(question: unknown, reply: Parameters<typeof scriptedModel>[0]
 }
 
 beforeEach(seedAssistantData);
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+});
 
 describe("the test environment never holds a real key", () => {
 	it("ANTHROPIC_API_KEY is the fake value from vitest.config.mts", () => {
@@ -581,17 +584,40 @@ describe("POST /api/assistant through the Worker", () => {
 
 	it("a 400 from the model gives 502 and logs only the status and error type, never the key or the question", async () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-		const apiError = { type: "error", error: { type: "invalid_request_error", message: "x" } };
-		vi.stubGlobal("fetch", scriptedModel({ response: new Response(JSON.stringify(apiError), { status: 400 }) }).fetch);
+		const apiMessage = "DISTINCTIVE-API-MESSAGE-7f3a";
+		const rawText = JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: apiMessage } });
+		const model = scriptedModel({ response: new Response(rawText, { status: 400 }) });
+		vi.stubGlobal("fetch", model.fetch);
 		const response = await postJson("/api/assistant", { question: Q1.question }, cookie);
 		expect(response.status).toBe(502);
 		expect(await response.json()).toEqual({ error: "assistant_unavailable" });
 		const logged = errors.mock.calls.map((args) => args.map((a) => String(a)).join(" "));
 		expect(logged.some((line) => line.includes("400") && line.includes("invalid_request_error"))).toBe(true);
 		const everything = JSON.stringify(errors.mock.calls) + logged.join("\n");
-		expect(everything.includes(FAKE_KEY)).toBe(false);
-		expect(everything.includes(Q1.question)).toBe(false);
-		errors.mockRestore();
+		const sent = model.calls[0].body;
+		const system = JSON.stringify((JSON.parse(sent) as { system: unknown }).system);
+		for (const secret of [FAKE_KEY, Q1.question, apiMessage, rawText, sent, system]) {
+			expect(everything.includes(secret)).toBe(false);
+		}
+	});
+
+	it("a network failure and a timeout log only the error name, never its message, the key or the question", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		const cases: [Error, string, string][] = [
+			[new TypeError("network down MSG-1c9d"), "TypeError", "MSG-1c9d"],
+			[new DOMException("timed out MSG-8e2b", "TimeoutError"), "TimeoutError", "MSG-8e2b"],
+		];
+		for (const [error, name, message] of cases) {
+			errors.mockClear();
+			vi.stubGlobal("fetch", scriptedModel({ error }).fetch);
+			const response = await postJson("/api/assistant", { question: Q1.question }, cookie);
+			expect(response.status).toBe(502);
+			const everything = JSON.stringify(errors.mock.calls) + errors.mock.calls.map((a) => a.map(String).join(" ")).join("\n");
+			expect(everything).toContain(name);
+			for (const secret of [message, "network down", "timed out", FAKE_KEY, Q1.question]) {
+				expect(everything.includes(secret)).toBe(false);
+			}
+		}
 	});
 
 	it("an unexpected failure returns the generic 500 with no stack trace and logs only the class", async () => {
@@ -630,6 +656,5 @@ describe("POST /api/assistant through the Worker", () => {
 		expect(JSON.parse(errors.mock.calls[0][0] as string)).toEqual({ route: "/api/assistant", status: 500, error: "TypeError" });
 		// Logs never carry the question.
 		expect(String(errors.mock.calls[0][0])).not.toContain("Instagram");
-		errors.mockRestore();
 	});
 });
