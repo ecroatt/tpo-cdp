@@ -27,6 +27,17 @@ export interface ModelDeps {
 	fetch?: typeof fetch;
 }
 
+/** The error.type of an API error body, or "unknown". Nothing else from the body is read. */
+async function apiErrorType(response: Response): Promise<string> {
+	try {
+		const parsed = (await response.json()) as { error?: { type?: unknown } } | null;
+		const type = parsed?.error?.type;
+		return typeof type === "string" && /^[a-z_]{1,64}$/.test(type) ? type : "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
 /** The tool call the model chose. */
 export interface ModelPlan {
 	name: string;
@@ -55,9 +66,14 @@ export async function sendToModel(body: ModelRequestBody, deps: ModelDeps): Prom
 			body: text,
 			signal: AbortSignal.timeout(TIMEOUT_MS),
 		});
-		if (!response.ok) throw new ModelUnavailableError();
+		if (!response.ok) {
+			console.error(`model call failed: status ${response.status} error.type ${await apiErrorType(response)}`);
+			throw new ModelUnavailableError();
+		}
 		reply = await response.json();
-	} catch {
+	} catch (error) {
+		if (error instanceof ModelUnavailableError) throw error;
+		console.error(`model call failed: ${error instanceof Error ? error.name : "UnknownError"}`);
 		throw new ModelUnavailableError();
 	}
 

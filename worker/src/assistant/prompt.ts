@@ -13,7 +13,6 @@ export interface ToolDefinition {
 export interface ModelRequestBody {
 	model: string;
 	max_tokens: number;
-	temperature: number;
 	system: string;
 	tools: ToolDefinition[];
 	tool_choice: { type: "any" };
@@ -139,7 +138,6 @@ export function buildModelRequest(scrubbedQuestion: string): ModelRequestBody {
 	return {
 		model: MODEL_ID,
 		max_tokens: MAX_TOKENS,
-		temperature: 0,
 		system: SYSTEM_PROMPT,
 		tools: TOOLS,
 		tool_choice: { type: "any" },
