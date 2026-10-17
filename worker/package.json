@@ -7,11 +7,13 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "test": "vitest run",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "import": "tsx scripts/import.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.4",
     "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.5.2",
     "vitest": "~4.1.0",
     "wrangler": "^4.151.0"
