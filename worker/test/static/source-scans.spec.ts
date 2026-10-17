@@ -38,14 +38,6 @@ export function prepareArguments(text: string, marker = ".prepare("): { args: st
 	}
 }
 
-/** Anything other than string literals joined by +, which would still be constant text. */
-export function isConstantSql(rawArgs: string): boolean {
-	const args = rawArgs.replace(/,\s*$/, "");
-	if (args.includes("`")) return /^`[^`$]*`$/.test(args.trim());
-	// Literals only, optionally joined by +.
-	return /^\s*("([^"\\]|\\.)*"|'([^'\\]|\\.)*')(\s*\+\s*("([^"\\]|\\.)*"|'([^'\\]|\\.)*'))*\s*$/.test(args);
-}
-
 /**
  * Interpolations allowed inside SQL template literals, per file. Each is a constant identifier or a
  * placeholder list built from "?", never user input. The importer's `verb`, `table`, `columns`, `group`
@@ -67,13 +59,13 @@ const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
 const SQL_WORDS = /\b(SELECT|INSERT|UPDATE|DELETE|VALUES|WITH|WHERE|FROM|AND|OR|JOIN|ORDER|SET|IN)\b/i;
 
 /** Interpolated expressions of SQL-looking template literals that are not in `allowed`. */
-export function disallowedSqlInterpolations(text: string, allowed: string[]): string[] {
+export function disallowedSqlInterpolations(text: string, allowed: string[], forceSql = false): string[] {
 	const bad: string[] = [];
 	for (const m of text.matchAll(/`(?:[^`\\]|\\.)*`/g)) {
 		const literal = m[0];
 		// A template assigned to `sql:` or passed to `.prepare(` is SQL whatever words it contains.
 		const before = text.slice(Math.max(0, m.index! - 40), m.index!);
-		const sqlPosition = /(\bsql\s*:|\.prepare\s*\()\s*$/.test(before);
+		const sqlPosition = forceSql || /(\bsql\s*:|\.prepare\s*\()\s*$/.test(before);
 		// HTML page templates start with a tag; their prose ("Sign in") would otherwise look like SQL words.
 		if (!sqlPosition && (literal.startsWith("`<") || (!SQL_WORDS.test(literal) && !literal.includes("?")))) continue;
 		for (const part of literal.matchAll(/\$\{([^}]*)\}/g)) {
@@ -84,7 +76,7 @@ export function disallowedSqlInterpolations(text: string, allowed: string[]): st
 }
 
 /** Splits call arguments on top-level commas, ignoring commas inside strings, brackets and parens. */
-function splitArgs(args: string): string[] {
+function splitArgs(args: string, separator = ","): string[] {
 	const out: string[] = [];
 	let depth = 0;
 	let quote: string | null = null;
@@ -97,7 +89,7 @@ function splitArgs(args: string): string[] {
 		} else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
 		else if ("([{".includes(ch)) depth++;
 		else if (")]}".includes(ch)) depth--;
-		else if (ch === "," && depth === 0) {
+		else if (ch === separator && depth === 0) {
 			out.push(args.slice(start, i).trim());
 			start = i + 1;
 		}
@@ -108,6 +100,61 @@ function splitArgs(args: string): string[] {
 
 const STRING_LITERAL = /^("([^"\\]|\\.)*"|'([^'\\]|\\.)*')$/;
 const LITERAL_ARRAY = /^\[\s*(("([^"\\]|\\.)*"|'([^'\\]|\\.)*')\s*,?\s*)*\]$/;
+
+const TEMPLATE = /^`(?:[^`\\]|\\.)*`$/;
+
+/**
+ * The ONE rule for every SQL position (each `sql:` value and each `.prepare(` argument): string literals
+ * joined by `+`, and/or templates whose interpolations are all on the allow-list. Anything else
+ * (identifiers, calls, member access, other operators) fails.
+ */
+export function isConstantSql(expression: string, allowed: string[] = []): boolean {
+	const expr = expression.trim().replace(/,$/, "").trim();
+	if (expr === "") return false;
+	return splitArgs(expr, "+").every((term) => {
+		if (STRING_LITERAL.test(term)) return true;
+		return TEMPLATE.test(term) && disallowedSqlInterpolations(term, allowed, true).length === 0;
+	});
+}
+
+/** Expressions assigned to `sql:` properties (the `sql: string` type declaration is not a value). */
+export function sqlFieldExpressions(text: string): { expr: string; index: number }[] {
+	const found: { expr: string; index: number }[] = [];
+	for (const m of text.matchAll(/\bsql\s*:\s*/g)) {
+		let i = m.index! + m[0].length;
+		const start = i;
+		let depth = 0;
+		let quote: string | null = null;
+		for (; i < text.length; i++) {
+			const ch = text[i];
+			if (quote) {
+				if (ch === "\\") i++;
+				else if (ch === quote) quote = null;
+			} else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+			else if ("([{".includes(ch)) depth++;
+			else if (")]}".includes(ch)) {
+				if (depth === 0) break;
+				depth--;
+			} else if ((ch === "," || ch === ";") && depth === 0) break;
+		}
+		const expr = text.slice(start, i).trim();
+		if (expr === "string") continue;
+		found.push({ expr, index: m.index! });
+	}
+	return found;
+}
+
+/** SQL positions in `text` that break the shared rule, as line numbers. */
+export function badSqlPositions(text: string, allowed: string[]): number[] {
+	const line = (index: number) => text.slice(0, index).split("\n").length;
+	const bad: number[] = [];
+	for (const { expr, index } of sqlFieldExpressions(text)) if (!isConstantSql(expr, allowed)) bad.push(line(index));
+	for (const { args, index } of prepareArguments(text)) {
+		if (!isConstantSql(splitArgs(args)[0] ?? "", allowed)) bad.push(line(index));
+	}
+	return bad;
+}
+
 
 /**
  * `verb`, `table` and `columns` may be interpolated only because every `bulkInsert(` call passes
@@ -137,15 +184,29 @@ export function dbMetricsIsConstant(text: string): boolean {
 }
 
 describe("source scans", () => {
-	it("no .prepare( call is built with a template literal or + concatenation of non-constant values", () => {
+	it("every sql: value and .prepare( argument is string literals joined by + or an allow-listed template", () => {
 		const offenders: string[] = [];
 		for (const file of sourceFiles()) {
-			const text = readFileSync(file, "utf8");
-			for (const { args, index } of prepareArguments(text)) {
-				if (!isConstantSql(args)) offenders.push(`${rel(file)}:${text.slice(0, index).split("\n").length}`);
-			}
+			const allowed = ALLOWED_SQL_INTERPOLATIONS[rel(file)] ?? [];
+			for (const line of badSqlPositions(readFileSync(file, "utf8"), allowed)) offenders.push(`${rel(file)}:${line}`);
 		}
 		expect(offenders).toEqual([]);
+		// The scan really sees the importer's SQL positions.
+		const build = readFileSync(join(root, "src/import/build.ts"), "utf8");
+		expect(sqlFieldExpressions(build).length).toBeGreaterThanOrEqual(6);
+	});
+
+	it("the shared SQL rule flags concatenation, identifiers and calls in sql: and .prepare(", () => {
+		expect(badSqlPositions('const a = { sql: "a" + x };', [])).toEqual([1]);
+		expect(badSqlPositions('const a = { sql: "a" + "b", params: [] };', [])).toEqual([]);
+		expect(badSqlPositions('db.prepare("a" + x)', [])).toEqual([1]);
+		expect(badSqlPositions('db.prepare("a" + "b")', [])).toEqual([]);
+		expect(badSqlPositions("const a = { sql: someVar };", [])).toEqual([1]);
+		expect(badSqlPositions("const a = { sql: build(1), params: [] };", [])).toEqual([1]);
+		expect(badSqlPositions("const a = { sql: \"INSERT INTO t VALUES ('\" + value + \"')\" };", [])).toEqual([1]);
+		expect(badSqlPositions("const a = { sql: `x ${y}` };", [])).toEqual([1]);
+		expect(badSqlPositions("const a = { sql: `x ${table}` };", ["table"])).toEqual([]);
+		expect(badSqlPositions("interface S { sql: string; }", [])).toEqual([]);
 	});
 
 	it("the .prepare( scan flags dynamic SQL and accepts constant SQL", () => {
