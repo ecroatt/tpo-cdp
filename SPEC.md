@@ -394,6 +394,8 @@ The transcript must show all five:
   - [workers] `test/lookup.spec.ts` and `test/segments.spec.ts`, except the cases that need the webhook, which are added in Phase 3.
   - [workers] the CSRF case in `test/security.spec.ts`.
   - [workers] `test/rows-read.spec.ts`: seeds 1,500 profiles with visitors, web events and 300 app users, then asserts lookup by email and both segment previews each read at most 4 times the seeded rows (linear), using the pure recorder in `scripts/lib/rows-read.ts`.
+  - [workers] `test/rows-read.spec.ts` also gives lookup its own budget, 10 x the rows the looked-up profile owns plus 30, which fails if `visitor_links(profile_id)` or `user_links(profile_id)` loses its index.
+  - [workers] `test/segments.spec.ts` ("preview ordering done in JS"): score ties break by `profile_id` ascending, chart groups sort by count descending then name (including `none`), and with more than 50 matches the 50 returned are the highest scorers while `count` stays the full total.
 - **Live check:**
   - Look up a known subscriber by an email with different case and spaces; the profile shows site visits.
   - The brief's Instagram/30-day segment returns a count.
@@ -472,7 +474,7 @@ The transcript must show all five:
 - **Misreadings:** the model can misread a question into the wrong filters. Answers are templated from real results, so the numbers are right for the plan it chose, and the UI shows that plan so the user can catch a misreading.
 - **Sessions:** the sessions table grows until the next login cleanup runs.
 - **Scale:** D1 single-region writes and read-time joins are fine at this size but would need materialized links at scale.
-- **D1 read budget:** the free plan allows 5M rows read per day, and the live site hit it. Cause: `visitor_links.profile_id` and `user_links.profile_id` had no index, so every per-profile subquery (score, `min_site_visits`, `has_app`, lookup joins) was a full scan, which is quadratic in profiles, and the segment preview read profiles joined to subscribers four times (count, rows, by_source, by_status). Fixed by migration 0003 and by `previewSegment` making one pass over the matching profiles (source, status and score per row) and deriving the count, the chart groups and the top 50 in JS. The budget is under 25,000 rows read per UI call, measured with `npm run perf` on the local real-data D1 (2,931 profiles, 10,000 web events, no app events):
+- **D1 read budget:** the free plan allows 5M rows read per day, and the live site hit it. Cause: `visitor_links.profile_id` and `user_links.profile_id` had no index, so every per-profile subquery (score, `min_site_visits`, `has_app`, lookup joins) was a full scan, which is quadratic in profiles, and the segment preview read profiles joined to subscribers four times (count, rows, by_source, by_status). Fixed by migration 0003 and by `previewSegment` making one pass over the matching profiles (source, status and score per row) and deriving the count, the chart groups and the top 50 in JS. The budget is under 25,000 rows read per UI call (`npm run perf` marks a call at 25,000 or more as OVER BUDGET and exits 1), measured with `npm run perf` on the local real-data D1 (2,931 profiles, 10,000 web events, no app events):
 
 | Call | Before | After |
 | --- | --- | --- |

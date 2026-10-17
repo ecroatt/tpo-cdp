@@ -7,6 +7,8 @@ import { COOKIE_NAME, sha256Hex } from "../src/auth/session";
 import { recordRowsRead } from "./lib/rows-read";
 
 const ORIGIN = "http://localhost:8787";
+/** A call that reads this many rows or more is over budget and makes the script exit 1. */
+const ROWS_READ_BUDGET = 25_000;
 
 async function main(): Promise<void> {
 	const { env, dispose } = await getPlatformProxy<Env>({
@@ -82,9 +84,13 @@ async function main(): Promise<void> {
 			recorder.reset();
 			const response = await worker.fetch(request as never, wrappedEnv, ctx);
 			await response.arrayBuffer();
+			const rows = recorder.rowsRead();
+			const over = rows >= ROWS_READ_BUDGET;
 			console.log(
-				`${label.padEnd(34)} HTTP ${response.status}  statements ${String(recorder.statements()).padStart(3)}  rows_read ${String(recorder.rowsRead()).padStart(8)}`,
+				`${label.padEnd(34)} HTTP ${response.status}  statements ${String(recorder.statements()).padStart(3)}  rows_read ${String(rows).padStart(8)}` +
+					(over ? "  <== OVER BUDGET (" + ROWS_READ_BUDGET + " or more)" : ""),
 			);
+			if (over) failed = true;
 			if (response.status !== expect) {
 				failed = true;
 				console.error(`  expected HTTP ${expect}`);
