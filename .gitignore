@@ -31,3 +31,6 @@ node_modules/
 .claude/settings.local.json
 
 docs/TPO_Developer_Assessment.pdf
+
+# Assessment data (contains personal data; keep local only)
+data/*.csv
