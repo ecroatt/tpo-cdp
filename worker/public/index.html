@@ -3,18 +3,29 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Hello, World!</title>
+		<title>TPO CDP</title>
+		<link rel="stylesheet" href="/style.css" />
 	</head>
 	<body>
-		<h1 id="heading"></h1>
-		<p>This page comes from a static asset stored at `public/index.html` as configured in `wrangler.jsonc`.</p>
-		<script>
-			fetch('/message')
-				.then((resp) => resp.text())
-				.then((text) => {
-					const h1 = document.getElementById('heading');
-					h1.textContent = text;
-				});
-		</script>
+		<header>
+			<h1>TPO CDP</h1>
+			<form method="post" action="/logout">
+				<button type="submit">Sign out</button>
+			</form>
+		</header>
+		<main>
+			<h2>Last import</h2>
+			<p id="run-at">Loading...</p>
+			<table id="report">
+				<thead>
+					<tr>
+						<th>Metric</th>
+						<th>Value</th>
+					</tr>
+				</thead>
+				<tbody></tbody>
+			</table>
+		</main>
+		<script type="module" src="/home.js"></script>
 	</body>
 </html>

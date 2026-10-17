@@ -1,0 +1,30 @@
+body {
+	font-family: system-ui, sans-serif;
+	margin: 0 auto;
+	max-width: 56rem;
+	padding: 1rem;
+	color: #1a1a1a;
+}
+
+header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+table {
+	border-collapse: collapse;
+	width: 100%;
+}
+
+th,
+td {
+	border-bottom: 1px solid #ddd;
+	padding: 0.4rem 0.6rem;
+	text-align: left;
+}
+
+button {
+	cursor: pointer;
+	padding: 0.4rem 0.9rem;
+}
