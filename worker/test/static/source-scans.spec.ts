@@ -285,7 +285,7 @@ describe("source scans", () => {
 		const score = /export const SCORE_SQL =\s*([^;]*);/.exec(engagement);
 		expect(score).not.toBeNull();
 		expect(isConstantSql(score![1])).toBe(true);
-		const appCte = /export const APP_POINTS_CTE =s*([^;]*);/.exec(engagement);
+		const appCte = /export const APP_POINTS_CTE =\s*([^;]*);/.exec(engagement);
 		expect(appCte).not.toBeNull();
 		expect(isConstantSql(appCte![1])).toBe(true);
 		const owned = readFileSync(join(root, "src/lib/owned-events.ts"), "utf8");
