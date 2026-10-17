@@ -47,6 +47,38 @@ export function isConstantSql(rawArgs: string): boolean {
 	return /^\s*("([^"\\]|\\.)*"|'([^'\\]|\\.)*')(\s*\+\s*("([^"\\]|\\.)*"|'([^'\\]|\\.)*'))*\s*$/.test(args);
 }
 
+/**
+ * Interpolations allowed inside SQL template literals, per file. Each is a constant identifier or a
+ * placeholder list built from "?", never user input. The importer's `verb`, `table`, `columns`, `group`
+ * and `select` come from fixed lists in the same file.
+ */
+const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
+	"src/import/build.ts": [
+		'columns.map(() => "?").join(", ")',
+		'columns.join(", ")',
+		"verb",
+		"table",
+		"group",
+		'part.map(() => group).join(", ")',
+		'part.map(() => "(?, ?)").join(", ")',
+		"select",
+	],
+};
+
+const SQL_WORDS = /\b(SELECT|INSERT|UPDATE|DELETE|VALUES|WITH)\b/;
+
+/** Interpolated expressions of SQL-looking template literals that are not in `allowed`. */
+export function disallowedSqlInterpolations(text: string, allowed: string[]): string[] {
+	const bad: string[] = [];
+	for (const literal of text.match(/`(?:[^`\\]|\\.)*`/g) ?? []) {
+		if (!SQL_WORDS.test(literal) && !literal.includes("?")) continue;
+		for (const m of literal.matchAll(/\$\{([^}]*)\}/g)) {
+			if (!allowed.includes(m[1].trim())) bad.push(m[1].trim());
+		}
+	}
+	return bad;
+}
+
 describe("source scans", () => {
 	it("no .prepare( call is built with a template literal or + concatenation of non-constant values", () => {
 		const offenders: string[] = [];
@@ -65,6 +97,23 @@ describe("source scans", () => {
 		expect(isConstantSql("`SELECT ${x}`")).toBe(false);
 		expect(isConstantSql('"SELECT " + table')).toBe(false);
 		expect(prepareArguments('db.prepare("a (b)").bind(x)').map((p) => p.args)).toEqual(['"a (b)"']);
+	});
+
+	it("no SQL template literal in src/ or scripts/ interpolates a non-constant value", () => {
+		const offenders: string[] = [];
+		for (const file of sourceFiles()) {
+			const bad = disallowedSqlInterpolations(readFileSync(file, "utf8"), ALLOWED_SQL_INTERPOLATIONS[rel(file)] ?? []);
+			for (const expr of bad) offenders.push(`${rel(file)}: \${${expr}}`);
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("the SQL template scan flags a non-constant interpolation and accepts allow-listed ones", () => {
+		expect(disallowedSqlInterpolations("db.prepare(`SELECT * FROM t WHERE id = ${id}`)", [])).toEqual(["id"]);
+		expect(disallowedSqlInterpolations("const q = `INSERT INTO t VALUES (${userInput})`;", ["table"])).toEqual(["userInput"]);
+		expect(disallowedSqlInterpolations("const q = `INSERT INTO ${table} VALUES (?)`;", ["table"])).toEqual([]);
+		expect(disallowedSqlInterpolations("const g = `(${cols.map(() => \"?\").join(\", \")})`;", [])).toHaveLength(1);
+		expect(disallowedSqlInterpolations("log(`done in ${ms} ms`)", [])).toEqual([]);
 	});
 
 	it("no TODO or FIXME in src/ or scripts/", () => {
