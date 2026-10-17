@@ -73,7 +73,7 @@ export async function sendToModel(body: ModelRequestBody, deps: ModelDeps): Prom
 		reply = await response.json();
 	} catch (error) {
 		if (error instanceof ModelUnavailableError) throw error;
-		console.error(`model call failed: ${error instanceof Error ? error.name : "UnknownError"}`);
+		console.error("model call failed:", error instanceof Error ? error.name : "UnknownError");
 		throw new ModelUnavailableError();
 	}
 
