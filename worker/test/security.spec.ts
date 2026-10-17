@@ -150,6 +150,34 @@ describe("login and session", () => {
 		expect(seen).toEqual(["unknown"]);
 	});
 
+	it("fails closed when UI_PASSWORD is missing, even with an empty password", async () => {
+		const missing = { ...env, UI_PASSWORD: undefined, LOGIN_LIMITER: allowAll } as unknown as Env;
+		const response = await call("/login", loginRequest(""), missing);
+		expect(response.status).toBe(401);
+		expect(response.headers.get("Set-Cookie")).toBeNull();
+		const other = await call("/login", loginRequest("anything"), missing);
+		expect(other.headers.get("Set-Cookie")).toBeNull();
+	});
+
+	it("fails closed when UI_PASSWORD is empty", async () => {
+		const empty = { ...env, UI_PASSWORD: "", LOGIN_LIMITER: allowAll } as unknown as Env;
+		const response = await call("/login", loginRequest(""), empty);
+		expect(response.status).toBe(401);
+		expect(response.headers.get("Set-Cookie")).toBeNull();
+	});
+
+	it("an empty password gets 401 against the real configured password", async () => {
+		const response = await call("/login", loginRequest(""));
+		expect(response.status).toBe(401);
+		expect(response.headers.get("Set-Cookie")).toBeNull();
+	});
+
+	it("uses dummy secrets for all three secret bindings in tests", () => {
+		expect(env.UI_PASSWORD).toBe("test-ui-password");
+		expect(env.WEBHOOK_SECRET).toBe("test-webhook-secret");
+		expect(env.ANTHROPIC_API_KEY).toBe("test-anthropic-key");
+	});
+
 	it("the real LOGIN_LIMITER binding is wired up", async () => {
 		const response = await call("/login", loginRequest("nope", "192.0.2.77"));
 		expect(response.status).toBe(401);

@@ -16,7 +16,9 @@ export async function sha256Hex(value: string): Promise<string> {
  * Constant-time password check: HMAC both values with a per-request random key,
  * then compare the fixed-length digests with timingSafeEqual.
  */
-export async function passwordMatches(candidate: string, expected: string): Promise<boolean> {
+export async function passwordMatches(candidate: string, expected: unknown): Promise<boolean> {
+	// Fail closed: a missing or empty configured password, or an empty attempt, never matches.
+	if (typeof expected !== "string" || expected === "" || candidate === "") return false;
 	const key = await crypto.subtle.importKey(
 		"raw",
 		crypto.getRandomValues(new Uint8Array(32)),
