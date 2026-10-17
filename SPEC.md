@@ -23,7 +23,7 @@ This is the source of truth for behavior. The brief (`docs/TPO_Developer_Assessm
 
 ## 1. Pulls it together (import, link, dedupe)
 
-### Data model (D1, `worker/migrations/0001_init.sql`, `0002_app_event_owner.sql`, `0003_read_indexes.sql`)
+### Data model (D1, `worker/migrations/0001_init.sql`, `0002_app_event_owner.sql`, `0003_read_indexes.sql`, `0004_device_links_user.sql`)
 D1 migrations live in `migrations_dir` on the `d1_databases` entry. This is unrelated to the Durable Object `migrations` key that CLAUDE.md says must not come back.
 
 - `profiles(profile_id TEXT PK, kind TEXT CHECK IN ('subscriber','app_only','unknown_app_user'), email_norm TEXT UNIQUE NULL, created_at TEXT)`. `profile_id` = `lower(hex(randomblob(16)))`, never derived from an email.
@@ -37,6 +37,7 @@ D1 migrations live in `migrations_dir` on the `d1_databases` entry. This is unre
 - `segments`, `sessions` and `import_report` are described in their own sections.
 - Indexes: `web_events(ts)`, `app_events(user_id)`, `app_events(device_id, ts)`, `subscribers(source)`, `subscribers(signup_date)`.
 - Migration 0003 (read indexes, see "D1 read budget" in Known limitations) adds `visitor_links(profile_id, visitor_id)`, `user_links(profile_id, user_id)`, `web_events(visitor_id, ts)` (replaces `web_events(visitor_id)`) and `app_events(ts)`.
+- Migration 0004 (see "D1 read budget") adds `device_links(user_id, device_id)` and replaces `app_events(ts)` with the covering `app_events(ts, user_id, event, device_id)`.
 
 ### Import (`npm run import -- --local|--remote`)
 - `scripts/import.ts` (run with `tsx`) reads the three CSVs from `../data/`, builds parameter-safe SQL with the pure functions in `src/import/`, writes it to a temp file, and runs `wrangler d1 execute tpo-cdp --file <tmp> --local|--remote`.
@@ -474,14 +475,18 @@ The transcript must show all five:
 - **Misreadings:** the model can misread a question into the wrong filters. Answers are templated from real results, so the numbers are right for the plan it chose, and the UI shows that plan so the user can catch a misreading.
 - **Sessions:** the sessions table grows until the next login cleanup runs.
 - **Scale:** D1 single-region writes and read-time joins are fine at this size but would need materialized links at scale.
-- **D1 read budget:** the free plan allows 5M rows read per day, and the live site hit it. Cause: `visitor_links.profile_id` and `user_links.profile_id` had no index, so every per-profile subquery (score, `min_site_visits`, `has_app`, lookup joins) was a full scan, which is quadratic in profiles, and the segment preview read profiles joined to subscribers four times (count, rows, by_source, by_status). Fixed by migration 0003 and by `previewSegment` making one pass over the matching profiles (source, status and score per row) and deriving the count, the chart groups and the top 50 in JS. The budget is under 25,000 rows read per UI call (`npm run perf` marks a call at 25,000 or more as OVER BUDGET and exits 1), measured with `npm run perf` on the local real-data D1 (2,931 profiles, 10,000 web events, no app events):
+- **D1 read budget:** the free plan allows 5M rows read per day, and the live site hit it. Cause: `visitor_links.profile_id` and `user_links.profile_id` had no index, so every per-profile subquery (score, `min_site_visits`, `has_app`, lookup joins) was a full scan, which is quadratic in profiles, and the segment preview read profiles joined to subscribers four times (count, rows, by_source, by_status). Fixed by migration 0003 and by `previewSegment` making one pass over the matching profiles (source, status and score per row) and deriving the count, the chart groups and the top 50 in JS. The budget is under 25,000 rows read per UI call (`npm run perf` marks a call at 25,000 or more as OVER BUDGET and exits 1), measured with `npm run perf` on the local real-data D1 (2,941 profiles, 10,000 web events, plus the 4,609 seeded app events on 300 devices and 2,670 device links that `npm run perf` loads with `INSERT OR IGNORE`):
 
 | Call | Before | After |
 | --- | --- | --- |
-| lookup by email | 12 statements, 31,963 rows | 12 statements, 179 rows |
-| preview: instagram, not opened 30 days | 5 statements, 1,767,268 rows | 2 statements, 1,770 rows |
-| preview: no filters | 5 statements, 28,571,280 rows | 2 statements, 17,420 rows |
+| lookup by email | 12 statements, 31,963 rows (before migration 0003) | 10 statements, 181 rows |
+| preview: instagram, not opened 30 days | 5 statements, 1,767,268 rows (before 0003) | 2 statements, 6,391 rows |
+| preview: no filters | 5 statements, 28,571,280 rows (before 0003) | 2 statements, 22,274 rows |
+| lookup: profile with app activity (74 owned events) | 12 statements, 18,563 rows (view join) | 10 statements, 546 rows |
+| preview: app_active_days 30 | 2 statements, 2,552,866 rows (view join) | 2 statements, 8,171 rows |
+| preview: app_active_days 90 | 2 statements, 6,896,519 rows (view join) | 2 statements, 13,930 rows |
+| preview: app_active_days 30 + instagram | 2 statements, 748,893 rows (view join) | 2 statements, 9,372 rows |
 | import report | 2 statements, 22 rows | 2 statements, 22 rows |
 | session gate | 1 row | 1 row |
 
-  An unfiltered preview still scores every profile, so its cost grows with profiles and in-window events (linear). The app side is not exercised by these numbers because `app_events` is empty locally; see the Phase 3 scope.
+  The app side had the same problem in a different form. The `app_event_owner` view computes `owner_user_id` per event, so `owner_user_id = user_links.user_id` cannot use an index, and every per-profile subquery (lookup activity, `engagementFor`, the score, `app_active_days`) scanned every event once per profile. Phase 3 fixed it two ways (migration 0004 adds the indexes). Lookup reads only the events a profile can own: events with one of its user_ids, plus anonymous events on devices that have a `device_links` row for one of those users, with the view still deciding the owner. Segments compute app points once per query in one pass over the events in the window, grouped by owner and then by profile, and `app_active_days` is an uncorrelated `IN` subquery that runs once. An unfiltered preview still scores every profile, so its cost grows with profiles and in-window events (linear).

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { getPlatformProxy } from "wrangler";
 import worker from "../src/index";
 import { COOKIE_NAME, sha256Hex } from "../src/auth/session";
+import { applyPerfSeed, buildPerfSeed } from "./lib/perf-seed";
 import { recordRowsRead } from "./lib/rows-read";
 
 const ORIGIN = "http://localhost:8787";
@@ -23,6 +24,23 @@ async function main(): Promise<void> {
 	let tokenHash: string | null = null;
 	let failed = false;
 	try {
+		const subs = await raw.prepare("SELECT COUNT(*) AS n FROM subscribers").first<{ n: number }>();
+		if (!subs || subs.n === 0) {
+			console.error("The local database has no subscribers. Run `npm run import -- --local` first.");
+			process.exitCode = 1;
+			throw new Error("empty");
+		}
+
+		// App events for the app-side calls: ~5,000 events on ~300 devices, loaded with INSERT OR IGNORE through the raw
+		// binding (not counted), so a re-run changes nothing.
+		const pool = await raw
+			.prepare("SELECT u.user_id AS user_id FROM app_users u JOIN user_links l ON l.user_id = u.user_id WHERE u.origin = ? ORDER BY u.user_id LIMIT 220")
+			.bind("csv")
+			.all<{ user_id: string }>();
+		const seed = buildPerfSeed(pool.results.map((r) => r.user_id));
+		await applyPerfSeed(raw, seed);
+		console.log("Seeded (idempotent): " + seed.events.length + " perf app events, " + seed.devices + " devices, " + pool.results.length + " app users in the pool.");
+
 		console.log("Rows per table (local D1):");
 		const counts = await raw
 			.prepare(
@@ -38,13 +56,6 @@ async function main(): Promise<void> {
 			)
 			.first<Record<string, number>>();
 		for (const [table, n] of Object.entries(counts ?? {})) console.log("  " + table.padEnd(14) + " " + n);
-		const subs = await raw.prepare("SELECT COUNT(*) AS n FROM subscribers").first<{ n: number }>();
-		if (!subs || subs.n === 0) {
-			console.error("The local database has no subscribers. Run `npm run import -- --local` first.");
-			process.exitCode = 1;
-			throw new Error("empty");
-		}
-
 		// The subscriber with the most linked web visits. The email stays in memory and is never printed.
 		const top = await raw
 			.prepare(
@@ -61,6 +72,24 @@ async function main(): Promise<void> {
 		}
 		console.log(`Lookup subject has ${top.visits} linked web visits.\n`);
 		const lookupQ = "  " + top.email.toUpperCase() + "  ";
+
+		// The profile that owns the most perf events, counting the anonymous ones attributed through device_links.
+		// Looked up by profile_id, which is not PII. The view scan here is unmetered and runs once.
+		const busiest = await raw
+			.prepare(
+				"SELECT l.profile_id AS profile_id, COUNT(*) AS owned, SUM(o.attributed_from_device) AS from_device " +
+					"FROM app_event_owner o JOIN user_links l ON l.user_id = o.owner_user_id WHERE o.event_id LIKE ? " +
+					"GROUP BY l.profile_id ORDER BY owned DESC, l.profile_id LIMIT 1",
+			)
+			.bind("perf_e_%")
+			.first<{ profile_id: string; owned: number; from_device: number }>();
+		if (!busiest) {
+			console.error("No profile owns a perf event.");
+			process.exitCode = 1;
+			throw new Error("no perf owner");
+		}
+		console.log("Busiest app profile owns " + busiest.owned + " events, " + busiest.from_device + " of them attributed through a device login.");
+		console.log("");
 
 		const token = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
 		tokenHash = await sha256Hex(token);
@@ -103,11 +132,17 @@ async function main(): Promise<void> {
 			filters: { sources: ["instagram"], not_opened_days: 30 },
 		});
 		await call("preview: no filters", "/api/segments/preview", { filters: {} });
+		await call("lookup: profile with app activity", "/api/lookup?q=" + busiest.profile_id);
+		await call("preview: app_active_days 30", "/api/segments/preview", { filters: { app_active_days: 30 } });
+		await call("preview: app_active_days 90", "/api/segments/preview", { filters: { app_active_days: 90 } });
+		await call("preview: app_active_days 30 + instagram", "/api/segments/preview", {
+			filters: { app_active_days: 30, sources: ["instagram"] },
+		});
 		await call("import report", "/api/import-report");
 	} catch (err) {
 		if (process.exitCode !== 1) {
 			failed = true;
-			console.error("perf failed:", err instanceof Error ? err.name : "unknown");
+			console.error("perf failed:", err instanceof Error ? err.name + ": " + err.message : "unknown");
 		}
 	} finally {
 		if (tokenHash !== null) await raw.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
