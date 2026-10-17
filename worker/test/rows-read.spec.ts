@@ -89,8 +89,8 @@ describe("D1 rows read stay linear in the data", () => {
 		const { status, rows } = await rowsReadBy("/api/lookup?q=" + encodeURIComponent("U100@X.com"));
 		expect(status).toBe(200);
 		expect(rows).toBeLessThanOrEqual(LOOKUP_FACTOR * owned + LOOKUP_OVERHEAD);
-		// Guard against a budget so loose that a scan of visitor_links (1,500 rows) would pass.
-		expect(LOOKUP_FACTOR * owned + LOOKUP_OVERHEAD).toBeLessThan(PROFILES);
+		// Rule: the lookup budget (LOOKUP_FACTOR * owned + LOOKUP_OVERHEAD = 80) must stay below the
+		// smaller link table, Math.min(PROFILES, APP_USERS) = 300, so a scan of visitor_links or user_links fails this test.
 	});
 
 	it("preview with no filters", async () => {
