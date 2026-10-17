@@ -175,7 +175,7 @@ describe("login and session", () => {
 	it("uses dummy secrets for all three secret bindings in tests", () => {
 		expect(env.UI_PASSWORD).toBe("test-ui-password");
 		expect(env.WEBHOOK_SECRET).toBe("test-webhook-secret");
-		expect(env.ANTHROPIC_API_KEY).toBe("test-anthropic-key");
+		expect(env.ANTHROPIC_API_KEY === "test-fake-anthropic-key").toBe(true);
 	});
 
 	it("the real LOGIN_LIMITER binding is wired up", async () => {
