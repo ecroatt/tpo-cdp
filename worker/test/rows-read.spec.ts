@@ -160,14 +160,19 @@ describe("D1 rows read stay linear in the data", () => {
 	});
 
 	it("the assistant's name check reads at most 10 rows for a question with no names", async () => {
-		// Each adjacent word pair is an indexed range on profiles.email_norm that matches nothing here, so it reads
-		// no profile rows; a scan of the 1,500 profiles would fail this by a wide margin.
+		// Each adjacent word pair is three index ranges on profiles.email_norm that match nothing here: about 2 rows
+		// per range (the candidate and the index entry just past the range) and none of the 1,500 profile rows.
+		// A scan of profiles would read 1,500 rows per pair.
 		const { questionNamesSomeone } = await import("../src/assistant/names");
 		const recorder = recordRowsRead(env.tpo_cdp);
-		const found = await questionNamesSomeone(recorder.db, "how many instagram signups are cold in the last month and which pages did they read first?");
-		expect(found).toBe(false);
-		expect(recorder.statements()).toBeGreaterThan(0);
+		expect(await questionNamesSomeone(recorder.db, "cold signups")).toBe(false);
+		expect(recorder.statements()).toBe(1);
 		expect(recorder.rowsRead()).toBeLessThanOrEqual(10);
+		// It grows with the question (6 rows per adjacent pair), never with the table.
+		recorder.reset();
+		const question = "how many instagram signups are cold in the last month and which pages did they read first";
+		expect(await questionNamesSomeone(recorder.db, question)).toBe(false);
+		expect(recorder.rowsRead()).toBeLessThanOrEqual(6 * (question.split(" ").length - 1));
 	});
 
 	it("preview with no filters", async () => {

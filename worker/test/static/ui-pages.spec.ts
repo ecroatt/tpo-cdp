@@ -116,6 +116,11 @@ describe("SPEC 5 and 6 Assistant page", () => {
 		expect(js).toMatch(/getElementById\("model-request"\)\.textContent\s*=/);
 	});
 
+	it("shows a plain message for a blocked_pii answer that points to the Lookup page", () => {
+		expect(js).toMatch(/blocked_pii/);
+		expect(js).toMatch(/Lookup page/);
+	});
+
 	it("posts { question } to /api/assistant and renders answer, plan, chart and rows", () => {
 		expect(js).toMatch(/import \{[^}]*postJson[^}]*\} from "\/api\.js"/);
 		expect(js).toMatch(/postJson\("\/api\/assistant", \{ question/);
