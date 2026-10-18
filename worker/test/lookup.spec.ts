@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { addAppUser, addDeviceLink, addEvent, addProfile, addSubscriber, addVisit, addVisitor, call, loginCookie, resetAll } from "./fixtures/cdp";
+import { addAppUser, addDeviceLink, addEvent, addProfile, addSubscriber, addVisit, addVisitor, call, loginCookie, postJson, resetAll } from "./fixtures/cdp";
 import { makeEvent, postWebhook } from "./fixtures/webhook";
 
 let cookie = "";
@@ -10,7 +10,7 @@ beforeAll(async () => {
 });
 
 async function lookup(q: string, session: string | null = cookie): Promise<Response> {
-	return call(`/api/lookup?q=${encodeURIComponent(q)}`, {}, session ?? undefined);
+	return postJson("/api/lookup", { q }, session ?? undefined);
 }
 
 /**
@@ -193,10 +193,10 @@ describe("lookup", () => {
 	});
 
 	it("returns 404 not_found for an empty q and a whitespace-only q", async () => {
-		for (const path of ["/api/lookup?q=", "/api/lookup?q=%20%20"]) {
-			const response = await call(path, {}, cookie);
-			expect(response.status, path).toBe(404);
-			expect(await response.json(), path).toEqual({ error: "not_found" });
+		for (const q of ["", "  "]) {
+			const response = await lookup(q);
+			expect(response.status, JSON.stringify(q)).toBe(404);
+			expect(await response.json(), JSON.stringify(q)).toEqual({ error: "not_found" });
 		}
 	});
 
@@ -291,5 +291,37 @@ describe("lookup after webhook events", () => {
 		expect(byId.w_login.user_id).toBe("u_jane");
 		// Jane's 3 seeded events plus the 3 above.
 		expect(body.app_activity.total).toBe(6);
+	});
+});
+
+describe("lookup is POST only", () => {
+	beforeEach(seedJane);
+
+	it("GET /api/lookup?q=... does not run a lookup", async () => {
+		for (const q of ["jane.doe@x.com", "p_jane"]) {
+			const response = await call(`/api/lookup?q=${encodeURIComponent(q)}`, {}, cookie);
+			expect(response.status, q).toBe(404);
+			expect(await response.json(), q).toEqual({ error: "not_found" });
+		}
+	});
+
+	it("a foreign Origin gets 403 and a non-JSON content type gets 403", async () => {
+		const foreign = await call(
+			"/api/lookup",
+			{ method: "POST", headers: { "Content-Type": "application/json", Origin: "https://evil.example" }, body: JSON.stringify({ q: "p_jane" }) },
+			cookie,
+		);
+		expect(foreign.status).toBe(403);
+		const form = await call("/api/lookup", { method: "POST", headers: { "Content-Type": "text/plain", Origin: "https://cdp.test" }, body: JSON.stringify({ q: "p_jane" }) }, cookie);
+		expect(form.status).toBe(403);
+	});
+
+	it("a body that is not JSON, or has no string q, finds nothing", async () => {
+		const bad = await call("/api/lookup", { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://cdp.test" }, body: "{nope" }, cookie);
+		expect(bad.status).toBe(400);
+		for (const body of [{}, { q: 42 }, { q: null }, { q: ["p_jane"] }]) {
+			const response = await postJson("/api/lookup", body, cookie);
+			expect(response.status, JSON.stringify(body)).toBe(404);
+		}
 	});
 });

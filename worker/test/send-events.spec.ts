@@ -1,7 +1,7 @@
 // The simulator's scenario (scripts/lib/scenario.ts) run through the real webhook with real signatures.
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildScenario, formatResult, PRIMARY_USER, SECOND_USER, NEWCOMER_USER } from "../scripts/lib/scenario";
-import { addAppUser, addSubscriber, call, loginCookie, resetAll } from "./fixtures/cdp";
+import { addAppUser, addSubscriber, call, loginCookie, postJson, resetAll } from "./fixtures/cdp";
 import { countRows, postWebhook } from "./fixtures/webhook";
 
 let cookie = "";
@@ -19,7 +19,7 @@ beforeEach(async () => {
 });
 
 async function lookup(q: string): Promise<any> {
-	const response = await call(`/api/lookup?q=${encodeURIComponent(q)}`, {}, cookie);
+	const response = await postJson("/api/lookup", { q }, cookie);
 	expect(response.status).toBe(200);
 	return response.json();
 }

@@ -127,7 +127,7 @@ describe("D1 rows read stay linear in the data", () => {
 		// Lookup reads what one profile owns, not the whole database. u100 is p100: 1 visitor_links row,
 		// 2 web_events, 1 user_links row and 1 app_users row (no app events), so 5 owned rows.
 		const owned = 1 + VISITS_PER_VISITOR + 1 + 1;
-		const { status, rows } = await rowsReadBy("/api/lookup?q=" + encodeURIComponent("U100@X.com"));
+		const { status, rows } = await rowsReadBy("/api/lookup", { q: "U100@X.com" });
 		expect(status).toBe(200);
 		expect(rows).toBeLessThanOrEqual(LOOKUP_FACTOR * owned + LOOKUP_OVERHEAD);
 		// Rule: the lookup budget (LOOKUP_FACTOR * owned + LOOKUP_OVERHEAD = 80) must stay below the
@@ -141,7 +141,7 @@ describe("D1 rows read stay linear in the data", () => {
 		const owned = 1 + VISITS_PER_VISITOR + 1 + 1 + OWN_EVENTS + 1 + 2;
 		const recorder = recordRowsRead(env.tpo_cdp);
 		const ctx = createExecutionContext();
-		const response = await worker.fetch(new Request(BASE + "/api/lookup?q=a50", { headers: { Cookie: cookie } }), { ...env, tpo_cdp: recorder.db } as Env, ctx);
+		const response = await worker.fetch(new Request(BASE + "/api/lookup", { method: "POST", headers: { Cookie: cookie, Origin: BASE, "Content-Type": "application/json" }, body: JSON.stringify({ q: "a50" }) }), { ...env, tpo_cdp: recorder.db } as Env, ctx);
 		const body = (await response.json()) as any;
 		await waitOnExecutionContext(ctx);
 		expect(response.status).toBe(200);
@@ -154,7 +154,7 @@ describe("D1 rows read stay linear in the data", () => {
 
 	it("lookup of a user whose device never logs in reads only the events it owns", async () => {
 		// a150's device never logs in: only its 4 own events belong to it.
-		const { status, rows } = await rowsReadBy("/api/lookup?q=a150");
+		const { status, rows } = await rowsReadBy("/api/lookup", { q: "a150" });
 		expect(status).toBe(200);
 		expect(rows).toBeLessThanOrEqual(LOOKUP_FACTOR * (1 + VISITS_PER_VISITOR + 1 + 1 + OWN_EVENTS) + LOOKUP_OVERHEAD);
 	});

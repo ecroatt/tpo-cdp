@@ -581,7 +581,7 @@ describe("engagement score", () => {
 		expect(detail).toEqual({ score: 17, breakdown: { newsletter: 3, site: 5, app: 9 }, window_start: "2026-08-29" });
 		const row = (await preview({ sources: ["google"] })).rows.find((r) => r.profile_id === "p_eng");
 		expect(row!.score).toBe(17);
-		const lookup = (await (await call("/api/lookup?q=p_eng", {}, cookie)).json()) as any;
+		const lookup = (await (await postJson("/api/lookup", { q: "p_eng" }, cookie)).json()) as any;
 		expect(lookup.engagement.score).toBe(17);
 		expect(lookup.engagement.breakdown).toEqual({ newsletter: 3, site: 5, app: 9 });
 	});
@@ -619,7 +619,7 @@ describe("webhook events and segments", () => {
 		// go_21: google subscriber, last open 2026-09-21 (inside 30 days, outside 7), so newsletter 1 and no other points.
 		expect(await scoreOf("go_21")).toBe(1);
 		expect(ids(await preview({ app_active_days: 30 }))).toEqual([]);
-		const lookupBefore = (await (await call("/api/lookup?q=u_w", {}, cookie)).json()) as any;
+		const lookupBefore = (await (await postJson("/api/lookup", { q: "u_w" }, cookie)).json()) as any;
 		expect(lookupBefore.engagement.score).toBe(1);
 
 		const response = await postWebhook(makeEvent({ event: "read_story", user_id: "u_w", device_id: "d_w", timestamp: "2026-09-27T10:00:00Z", properties: { story: "a-story" } }));
@@ -630,7 +630,7 @@ describe("webhook events and segments", () => {
 		expect(ids(await preview({ app_active_days: 30 }))).toEqual(["go_21"]);
 		// 1 day back is 2026-09-27, and the event is dated that day, so it counts.
 		expect(ids(await preview({ app_active_days: 1 }))).toEqual(["go_21"]);
-		const lookupAfter = (await (await call("/api/lookup?q=u_w", {}, cookie)).json()) as any;
+		const lookupAfter = (await (await postJson("/api/lookup", { q: "u_w" }, cookie)).json()) as any;
 		expect(lookupAfter.engagement.score).toBe(3);
 		expect(lookupAfter.engagement.breakdown).toEqual({ newsletter: 1, site: 0, app: 2 });
 		// An app_open adds 1 more.
