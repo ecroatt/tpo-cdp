@@ -18,6 +18,11 @@ export const PAGE_E = "/news/echo-census";
 export const PAGE_F = "/news/foxtrot-census";
 /** A content page that is not a site page, named in the spec. */
 export const PICKS = "/shadrachs-picks";
+/** Content pages whose paths start with a site page. Matching is exact, so they are never left out. */
+export const LOOKALIKE_ABOUT = "/about-us";
+export const LOOKALIKE_SUBSCRIBE = "/subscribe/thanks";
+/** Matches only profile 7, whose visits are all site pages. */
+export const SITE_ONLY_FILTERS = { sources: ["instagram"], signup_to: "2026-07-31" };
 
 export interface SubSeed {
 	k: number;
@@ -60,6 +65,7 @@ const VISITORS: [string, number][] = [
 	["v_1a2b3c4d02", 2],
 	["v_1a2b3c4d03", 1],
 	["v_1a2b3c4d04", 4],
+	["v_1a2b3c4d07", 7],
 	["v_1a2b3c4d08", 8],
 	["v_1a2b3c4d10", 10],
 	["v_1a2b3c4d11", 11],
@@ -84,10 +90,17 @@ const VISITS: [string, string, string][] = [
 	["v_1a2b3c4d04", PICKS, "2026-08-21T09:00:00Z"],
 	["v_1a2b3c4d04", "/", "2026-08-23T09:00:00Z"],
 	["v_1a2b3c4d04", "/subscribe", "2026-08-24T09:00:00Z"],
+	// Look-alike content pages: matching is exact, so these are not site pages and are always counted.
+	["v_1a2b3c4d04", LOOKALIKE_ABOUT, "2026-08-26T09:00:00Z"],
+	["v_1a2b3c4d04", LOOKALIKE_SUBSCRIBE, "2026-08-27T09:00:00Z"],
 	// Profile 8: earliest visit is /subscribe; first content page is PAGE_F (08-19).
 	["v_1a2b3c4d08", "/subscribe", "2026-08-18T09:00:00Z"],
 	["v_1a2b3c4d08", PAGE_F, "2026-08-19T09:00:00Z"],
 	["v_1a2b3c4d08", PICKS, "2026-08-25T09:00:00Z"],
+	["v_1a2b3c4d08", LOOKALIKE_ABOUT, "2026-08-26T09:00:00Z"],
+	// Profile 7 (Instagram, signed up 07-31, outside the Q1 and Q3 filters) has only site-page visits, all before 08-29.
+	["v_1a2b3c4d07", "/", "2026-08-05T09:00:00Z"],
+	["v_1a2b3c4d07", "/about", "2026-08-06T09:00:00Z"],
 	["v_1a2b3c4d10", PAGE_A, "2026-08-25T09:00:00Z"],
 	["v_1a2b3c4d10", PAGE_B, "2026-09-03T09:00:00Z"],
 	["v_1a2b3c4d11", PAGE_B, "2026-09-11T09:00:00Z"],

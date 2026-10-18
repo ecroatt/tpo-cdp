@@ -21,6 +21,8 @@ import {
 	PAGE_B,
 	PAGE_C,
 	PAGE_D,
+	LOOKALIKE_ABOUT,
+	LOOKALIKE_SUBSCRIBE,
 	PAGE_F,
 	pid,
 	PICKS,
@@ -30,6 +32,7 @@ import {
 	Q3,
 	scriptedModel,
 	seedAssistantData,
+	SITE_ONLY_FILTERS,
 	SUBS,
 } from "./fixtures/assistant";
 import { call, loginCookie, postJson, resetAll } from "./fixtures/cdp";
@@ -99,6 +102,19 @@ describe("buildModelRequest", () => {
 		expect((topPages.input_schema.properties.include_site_pages as { type: string }).type).toBe("boolean");
 		expect(topPages.input_schema.required).toEqual(["mode"]);
 		expect(body.system).toContain("include_site_pages");
+	});
+
+	it("never calls a content page a site page, and the include_site_pages wording names exactly SITE_PAGES", () => {
+		for (const line of body.system.split("
+")) {
+			if (/site pages?/i.test(line)) {
+				for (const page of ["/beliefs", "/our-staff", "/shadrachs-picks"]) expect(line.includes(page), line).toBe(false);
+			}
+		}
+		const named = /Site pages are exactly: (.*?) (/.exec(body.system);
+		expect(named).not.toBeNull();
+		expect(named![1].split(", ")).toEqual(SITE_PAGES);
+		expect(body.system).toContain("Pages on the site: ");
 	});
 
 	it("the system prompt carries TODAY and the shared definitions, and no email or id", () => {
@@ -370,7 +386,6 @@ describe("the brief's three example questions", () => {
 		const { json } = await ask("pages", { name: "top_pages", input: { filters: { sources: ["podcast"] }, mode: "first_visit" } });
 		expect(json.result.rows).toEqual([]);
 		expect(json.result.chart).toEqual({ type: "bar", labels: [], values: [], title: "First pages visited (profiles)" });
-		expect(json.answer).toBe("No pages found for profiles matching Podcast. Leaves out site pages: /, /subscribe, /about.");
 		expect(json.answer).toBe("No pages found for profiles matching Podcast." + LEAVES_OUT);
 	});
 
@@ -382,17 +397,22 @@ describe("the brief's three example questions", () => {
 
 	it("top_pages with the Q1 filters leaves out site pages in both modes and still counts /shadrachs-picks", async () => {
 		// Q1 profiles are 1, 4 and 8. Visits (site pages are /, /subscribe, /about): 1 -> / 06-15, /about 06-16, PAGE_D 07-01, PICKS 08-10;
-		// 4 -> / 08-20, PICKS 08-21, / 08-23, /subscribe 08-24; 8 -> /subscribe 08-18, PAGE_F 08-19, PICKS 08-25.
+		// 4 -> / 08-20, PICKS 08-21, / 08-23, /subscribe 08-24, /about-us 08-26, /subscribe/thanks 08-27;
+		// 8 -> /subscribe 08-18, PAGE_F 08-19, PICKS 08-25, /about-us 08-26. /about-us and /subscribe/thanks are content pages
+		// that merely start like a site page: they must be counted.
 		const all = await ask("pages", { name: "top_pages", input: { filters: Q1_FILTERS, mode: "all" } });
 		expect(all.json.plan.params).toEqual({ filters: Q1_FILTERS, mode: "all", limit: 10, include_site_pages: false });
-		// All three visited PICKS; PAGE_D only profile 1, PAGE_F only profile 8. Ties by page.
+		// All three visited PICKS; /about-us profiles 4 and 8; PAGE_D only profile 1, PAGE_F only profile 8,
+		// /subscribe/thanks only profile 4. Ties by page.
 		expect(all.json.result.rows).toEqual([
 			{ page: PICKS, profiles: 3 },
+			{ page: LOOKALIKE_ABOUT, profiles: 2 },
 			{ page: PAGE_D, profiles: 1 },
 			{ page: PAGE_F, profiles: 1 },
+			{ page: LOOKALIKE_SUBSCRIBE, profiles: 1 },
 		]);
 		expect(all.json.answer).toBe(
-			`Top 3 pages for profiles matching ${Q1_DESC}: ${PICKS} (3), ${PAGE_D} (1), ${PAGE_F} (1). Leaves out site pages: /, /subscribe, /about.`,
+			`Top 5 pages for profiles matching ${Q1_DESC}: ${PICKS} (3), ${LOOKALIKE_ABOUT} (2), ${PAGE_D} (1), ${PAGE_F} (1), ${LOOKALIKE_SUBSCRIBE} (1).${LEAVES_OUT}`,
 		);
 
 		// First content page: profile 1 -> PAGE_D (07-01), profile 4 -> PICKS (08-21), profile 8 -> PAGE_F (08-19).
@@ -404,7 +424,7 @@ describe("the brief's three example questions", () => {
 		]);
 		expect(first.json.result.chart.labels).toEqual([PAGE_D, PAGE_F, PICKS]);
 		expect(first.json.answer).toBe(
-			`Top 3 first pages for profiles matching ${Q1_DESC}: ${PAGE_D} (1), ${PAGE_F} (1), ${PICKS} (1). Leaves out site pages: /, /subscribe, /about.`,
+			`Top 3 first pages for profiles matching ${Q1_DESC}: ${PAGE_D} (1), ${PAGE_F} (1), ${PICKS} (1).${LEAVES_OUT}`,
 		);
 		for (const row of [...all.json.result.rows, ...first.json.result.rows]) expect(SITE_PAGES).not.toContain(row.page);
 	});
@@ -412,17 +432,20 @@ describe("the brief's three example questions", () => {
 	it("top_pages with include_site_pages true brings the site pages back, with no 'Leaves out' sentence", async () => {
 		const all = await ask("pages", { name: "top_pages", input: { filters: Q1_FILTERS, mode: "all", include_site_pages: true } });
 		expect(all.json.plan.params.include_site_pages).toBe(true);
-		// "/": profiles 1 and 4 (4 twice, counted once). /subscribe: 4 and 8. /about: 1. PICKS: 1, 4, 8. Ties by page.
+		// "/": profiles 1 and 4 (4 twice, counted once). /subscribe: 4 and 8. /about: 1. PICKS: 1, 4, 8. /about-us: 4, 8.
+		// Ties by page, so "/" < "/about-us" < "/subscribe" at 2, and "/about" < PAGE_D < PAGE_F < "/subscribe/thanks" at 1.
 		expect(all.json.result.rows).toEqual([
 			{ page: PICKS, profiles: 3 },
 			{ page: "/", profiles: 2 },
+			{ page: LOOKALIKE_ABOUT, profiles: 2 },
 			{ page: "/subscribe", profiles: 2 },
 			{ page: "/about", profiles: 1 },
 			{ page: PAGE_D, profiles: 1 },
 			{ page: PAGE_F, profiles: 1 },
+			{ page: LOOKALIKE_SUBSCRIBE, profiles: 1 },
 		]);
 		expect(all.json.answer).toBe(
-			`Top 6 pages for profiles matching ${Q1_DESC}: ${PICKS} (3), / (2), /subscribe (2), /about (1), ${PAGE_D} (1), ${PAGE_F} (1).`,
+			`Top 8 pages for profiles matching ${Q1_DESC}: ${PICKS} (3), / (2), ${LOOKALIKE_ABOUT} (2), /subscribe (2), /about (1), ${PAGE_D} (1), ${PAGE_F} (1), ${LOOKALIKE_SUBSCRIBE} (1).`,
 		);
 		expect(all.json.answer).not.toContain("Leaves out");
 
@@ -433,6 +456,22 @@ describe("the brief's three example questions", () => {
 			{ page: "/subscribe", profiles: 1 },
 		]);
 		expect(first.json.answer).toBe(`Top 2 first pages for profiles matching ${Q1_DESC}: / (2), /subscribe (1).`);
+	});
+
+	it("a profile with only site-page visits is left out of first_visit by default and counted with include_site_pages true", async () => {
+		const desc = "Instagram, signed up on or before 2026-07-31";
+		// Profile 7 is the only match: visits / (08-05) and /about (08-06), nothing else.
+		const hidden = await ask("pages", { name: "top_pages", input: { filters: SITE_ONLY_FILTERS, mode: "first_visit" } });
+		expect(hidden.json.result.rows).toEqual([]);
+		expect(hidden.json.answer).toBe(`No pages found for profiles matching ${desc}.${LEAVES_OUT}`);
+		const shown = await ask("pages", { name: "top_pages", input: { filters: SITE_ONLY_FILTERS, mode: "first_visit", include_site_pages: true } });
+		expect(shown.json.result.rows).toEqual([{ page: "/", profiles: 1 }]);
+		expect(shown.json.answer).toBe(`Top 1 first pages for profiles matching ${desc}: / (1).`);
+		const all = await ask("pages", { name: "top_pages", input: { filters: SITE_ONLY_FILTERS, mode: "all", include_site_pages: true } });
+		expect(all.json.result.rows).toEqual([
+			{ page: "/", profiles: 1 },
+			{ page: "/about", profiles: 1 },
+		]);
 	});
 
 	it("SITE_PAGES is exactly the home, subscribe and about pages", () => {
