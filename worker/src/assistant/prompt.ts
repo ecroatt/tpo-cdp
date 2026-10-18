@@ -92,10 +92,10 @@ const TOOLS: ToolDefinition[] = [
 				filters: FILTERS_SCHEMA,
 				mode: { type: "string", enum: ["all", "first_visit"], description: "all = every visit, first_visit = the first page each profile ever visited." },
 				limit: { type: "integer", minimum: 1, maximum: 20, description: "How many pages to return. Default 10." },
-					include_site_pages: {
-						type: "boolean",
-						description: "Default false. Set true only when the question asks about the home, subscribe or about pages; otherwise leave it out.",
-					},
+				include_site_pages: {
+					type: "boolean",
+					description: "Default false. Set true only when the question asks about the home, subscribe or about pages; otherwise leave it out.",
+				},
 			},
 			required: ["mode"],
 			additionalProperties: false,
