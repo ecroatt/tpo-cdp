@@ -140,6 +140,18 @@ describe("home.js", () => {
 		expect(js).toContain('toLocaleString("en-US")');
 	});
 
+	it("imports renderOverview from /overview-tiles.js and calls it with the fetch response", () => {
+		expect(js).toMatch(/^import\s*\{\s*renderOverview\s*\}\s*from\s*"\/overview-tiles\.js";/m);
+		expect(js).toMatch(/renderOverview\(\s*tiles\s*,\s*overviewStatus\s*,\s*response\s*\)/);
+	});
+
+	it("keeps overview-tiles.js free of imports and fetch calls", () => {
+		const tiles = read("overview-tiles.js");
+		expect(tiles).not.toMatch(/^\s*import\b/m);
+		expect(tiles).not.toMatch(/\bimport\s*\(/);
+		expect(tiles).not.toMatch(/\bfetch\s*\(/);
+	});
+
 	it("has a label for every metric key written in src/import/build.ts", () => {
 		const build = readFileSync(resolve(import.meta.dirname, "../../src/import/build.ts"), "utf8");
 		const keys = new Set<string>();
@@ -207,7 +219,7 @@ describe("visual refresh", () => {
 		});
 
 		it("has button hover and disabled rules", () => {
-			expect(rules.some((r) => /button:hover/.test(r.selector) && r.body.trim() !== "")).toBe(true);
+			expect(rules.some((r) => /(^|,)\s*button:hover\s*(,|$)/.test(r.selector) && r.body.trim() !== "")).toBe(true);
 			expect(rules.some((r) => /button:disabled|button\[disabled\]/.test(r.selector) && r.body.trim() !== "")).toBe(true);
 		});
 
