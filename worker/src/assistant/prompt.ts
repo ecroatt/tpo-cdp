@@ -1,5 +1,6 @@
 import { KINDS, SOURCES, STATUSES } from "../segments/filters";
 import { LAST_30_START, LAST_7_START, TODAY } from "../lib/time";
+import { SITE_PAGES } from "./tools";
 
 export const MODEL_ID = "claude-haiku-5-5";
 export const MAX_TOKENS = 512;
@@ -41,12 +42,12 @@ const SYSTEM_PROMPT = [
 	"- Sources (lowercase, twitter is x): " + SOURCES.join(", ") + ".",
 	"- Status: " + STATUSES.join(" or ") + ".",
 	"- Profile kinds: " + KINDS.join(", ") + ".",
-	"- Site pages: /, /subscribe, /about, /beliefs, /our-staff, /shadrachs-picks, and articles under /news/<slug>.",
+	"- Pages on the site: " + [...SITE_PAGES, "/beliefs", "/our-staff", "/shadrachs-picks"].join(", ") + ", and articles under /news/<slug>.",
 	"- App event types: app_open, read_story, link_click, login.",
 	"Tools:",
 	"- count_profiles(filters): how many profiles match.",
 	"- build_segment(filters): a list of matching profiles with a chart by source.",
-	"- top_pages(filters, mode, limit, include_site_pages): the most visited pages. Site pages (the home, subscribe and about pages) are left out unless include_site_pages is true; set it to true only when the question asks about those pages. mode 'all' counts every page the matching profiles visited; mode 'first_visit' counts the first page each matching profile ever visited.",
+	"- top_pages(filters, mode, limit, include_site_pages): the most visited pages. Site pages are exactly: " + SITE_PAGES.join(", ") + " (every other page is a content page). Site pages are left out unless include_site_pages is true; set it to true only when the question asks about the home, subscribe or about pages. mode 'all' counts every page the matching profiles visited; mode 'first_visit' counts the first page each matching profile ever visited.",
 	"- breakdown(by, filters): counts grouped by source, status, signup_month, kind or cold.",
 	"- engagement_ranking(limit, filters): the most engaged profiles.",
 	"- unsupported(reason): use this when no tool fits, for example a question about one named person, a comparison that needs two steps, or anything that is not about these filters. Give a short reason and suggest the Segments page.",
