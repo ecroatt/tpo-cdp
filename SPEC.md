@@ -234,7 +234,11 @@ One validated filter object is shared by the Segments page, the assistant tools 
 3. **Tools** (`src/assistant/tools.ts`). The model never writes SQL. Every plan is checked by the §3 validator; an invalid plan returns 422 `{ "error": "unsupported_question" }` and no SQL runs.
    - `count_profiles(filters)` returns a count.
    - `build_segment(filters)` returns a count, rows and a by-source chart.
-   - `top_pages(filters, mode: "all" | "first_visit", limit ≤ 20)` returns `[{page, profiles}]`. `first_visit` is the earliest visit per profile across all of that profile's linked visitor_ids, at any time (it usually comes before signup, so it shows what brought them in).
+   - `top_pages(filters, mode: "all" | "first_visit", limit ≤ 20, include_site_pages = false)` returns `[{page, profiles}]`. `first_visit` is the earliest visit per profile across all of that profile's linked visitor_ids, at any time (it usually comes before signup, so it shows what brought them in).
+     - **Site pages** are `/`, `/subscribe` and `/about`, defined once as the `SITE_PAGES` constant in `src/assistant/tools.ts`. Every other page is a content page, including `/beliefs`, `/our-staff` and `/shadrachs-picks`. Matching is exact, never by prefix.
+     - By default (`include_site_pages: false`) visits to site pages are dropped before counting, in both modes. In `first_visit` that makes the result each profile's first content page; a profile with only site-page visits is not counted.
+     - The plan always carries `include_site_pages`; the validator fills in `false` when it is missing and rejects any non-boolean. The prompt tells the model to set it to `true` only when the question asks about those pages (the home page, the subscribe page or the about page).
+     - When site pages are left out, the answer text ends with "Leaves out site pages: /, /subscribe, /about.", built from `SITE_PAGES`, including when no pages are found. With `include_site_pages: true` it has no such sentence.
    - `breakdown(by: "source" | "status" | "signup_month" | "kind" | "cold", filters)` returns `[{group, count}]`.
    - `engagement_ranking(limit ≤ 100, filters)` returns ranked rows with scores.
    - `unsupported(reason)` covers questions no tool fits. The UI shows the reason and suggests the Segments page.
@@ -264,6 +268,9 @@ One validated filter object is shared by the Segments page, the assistant tools 
 - A question that includes an email makes exactly one fetch call. The captured body contains no seeded email, profile_id, user_id or result count, and the browser response still contains the rows with emails.
 - Each of the three example questions, given the expected scripted plan, returns the correct count or pages against fixtures, with the templated answer.
 - `first_visit` picks a visit before signup when one exists, across two linked visitor_ids.
+- `top_pages` with the brief's Q1 filters (Instagram, signed up 2026-08-01 to 2026-08-31, cold), in both modes, returns no `/`, `/subscribe` or `/about` rows, still counts `/shadrachs-picks`, and names the left-out pages in the answer. The same plan with `include_site_pages: true` brings the site pages back, with hand-derived counts.
+- `validatePlan` fills `include_site_pages: false` by default and rejects a non-boolean value.
+- `npm run perf` and `test/rows-read.spec.ts` cover `top_pages` in both modes with both values of `include_site_pages`, each under the rows-read budget.
 - An invalid plan (unknown filter) returns 422 and runs no SQL.
 - An `unsupported` plan returns its reason and runs no SQL.
 
