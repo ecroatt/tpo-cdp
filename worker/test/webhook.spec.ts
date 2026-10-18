@@ -5,7 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import worker from "../src";
 import type { Limiter } from "../src/lib/limiter";
 import { sign } from "../src/webhook/sign";
-import { addAppUser, addDeviceLink, addEvent, addSubscriber, call, loginCookie, resetAll } from "./fixtures/cdp";
+import { addAppUser, addDeviceLink, addEvent, addSubscriber, call, loginCookie, postJson, resetAll } from "./fixtures/cdp";
 import { countRows, freshIp, makeEvent, postWebhook, SECRET, WEBHOOK_URL } from "./fixtures/webhook";
 
 let cookie = "";
@@ -20,7 +20,7 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 const BAD_SIGNATURE = "0".repeat(64);
 
 async function lookup(q: string): Promise<any> {
-	const response = await call(`/api/lookup?q=${encodeURIComponent(q)}`, {}, cookie);
+	const response = await postJson("/api/lookup", { q }, cookie);
 	expect(response.status, q).toBe(200);
 	return response.json();
 }
