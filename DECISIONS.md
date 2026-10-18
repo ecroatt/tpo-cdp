@@ -20,6 +20,8 @@ The calls I made in the Oct 17 interview, and the definitions the code uses. The
 | Hosting plan | Workers Paid ($5/month) | The live site hit D1's free limit of 5M rows read per day during the build. Indexes and a perf budget now keep reads low. | $5/month |
 | Top pages | Site pages (/, /subscribe, /about) left out by default; the answer names what it left out, and asking for them brings them back | The homepage and signup page aren't content. They'd top every list and hide what people actually read. | /beliefs and /our-staff still count as content; I'd add them to the list later |
 | First page | First content page; someone who only visited site pages isn't counted | If someone landed on the homepage first, the article they clicked next is the real first page that drew them in. | "First page" no longer means the literal first visit |
+| Home page | Growth start screen + visual refresh instead of the Phase 1 placeholder | The home page is where you start and is the first thing you see, so I'd like it to look organized and thought out. | One more deploy the day before the deadline, and a small read cost on every home page load |
+| Home event tile | App events in the last 30 days, not all time | It stays inside the read budget with no new migration the night before the deadline, and "what's happening lately" is more useful to a growth team than an all-time total. | The tile doesn't show the all-time event total |
 
 ## Engagement score
 

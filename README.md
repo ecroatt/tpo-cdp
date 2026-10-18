@@ -2,6 +2,7 @@
 
 A mini customer data platform for The Pour Over assessment. It loads three CSV sources (newsletter subscribers, website events and app users) into one profile per person, takes signed app events over a webhook in real time, and has an AI assistant that answers questions about the audience without the model ever seeing an email, a name or a row of data.
 
+- **Home:** four headline tiles (people, active subscribers, linked app users, app events in the last 30 days), Start here cards for Lookup, Segments and Assistant, example questions that open the Assistant with the question filled in (nothing is sent until you press Ask), and a last-import health check.
 - **Lookup:** find anyone by email, profile id, app user id or visitor id, and see their newsletter status, site visits, app activity and engagement score.
 - **Segments:** filter by source, signup date, status, cold, not opened in N days, profile kind, has the app, app activity in the last N days and site visits. You get a count, the top 50 profiles by engagement score and charts.
 - **Assistant:** ask a question in plain English ("Which pages do new subscribers hit first?") and get an answer, the plan it ran ("How I read your question"), a table and a chart. A toggle shows exactly what the AI saw.

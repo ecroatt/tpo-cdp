@@ -144,7 +144,7 @@ describe("home.js", () => {
 		const build = readFileSync(resolve(import.meta.dirname, "../../src/import/build.ts"), "utf8");
 		const keys = new Set<string>();
 		for (const m of build.matchAll(/counts\.(\w+)\s*=/g)) keys.add(m[1]);
-		for (const m of build.matchAll(/^\s*\["(\w+)",\s*(?:"SELECT|$)/gm)) keys.add(m[1]);
+		for (const m of build.matchAll(/\[\s*"(\w+)",\s*"SELECT/g)) keys.add(m[1]);
 		expect(keys.size).toBeGreaterThanOrEqual(20);
 		for (const key of ["subscribers_duplicates_merged", "visitors_linked", "profiles_app_only", "app_users_matched", "visitors_unlinked"]) expect(keys.has(key), key).toBe(true);
 		for (const key of keys) expect(js, key).toMatch(new RegExp(`\\b${key}\\s*:\\s*"`));

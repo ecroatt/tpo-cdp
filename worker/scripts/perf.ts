@@ -12,6 +12,8 @@ import { recordRowsRead } from "./lib/rows-read";
 const ORIGIN = "http://localhost:8787";
 /** A call that reads this many rows or more is over budget and makes the script exit 1. */
 const ROWS_READ_BUDGET = 25_000;
+/** The home page tiles have their own, tighter budget (SPEC section 9). */
+const OVERVIEW_BUDGET = 10_000;
 
 async function main(): Promise<void> {
 	const { env, dispose } = await getPlatformProxy<Env>({
@@ -101,7 +103,7 @@ async function main(): Promise<void> {
 			.bind(tokenHash, now.toISOString(), new Date(now.getTime() + 3600_000).toISOString())
 			.run();
 
-		const call = async (label: string, path: string, body?: unknown, expect = 200): Promise<void> => {
+		const call = async (label: string, path: string, body?: unknown, expect = 200, budget = ROWS_READ_BUDGET): Promise<void> => {
 			const headers: Record<string, string> = { Cookie: `${COOKIE_NAME}=${token}` };
 			if (body !== undefined) {
 				headers.Origin = ORIGIN;
@@ -116,10 +118,10 @@ async function main(): Promise<void> {
 			const response = await worker.fetch(request as never, wrappedEnv, ctx);
 			await response.arrayBuffer();
 			const rows = recorder.rowsRead();
-			const over = rows >= ROWS_READ_BUDGET;
+			const over = rows >= budget;
 			console.log(
 				`${label.padEnd(34)} HTTP ${response.status}  statements ${String(recorder.statements()).padStart(3)}  rows_read ${String(rows).padStart(8)}` +
-					(over ? "  <== OVER BUDGET (" + ROWS_READ_BUDGET + " or more)" : ""),
+					(over ? "  <== OVER BUDGET (" + budget + " or more)" : ""),
 			);
 			if (over) failed = true;
 			if (response.status !== expect) {
@@ -141,6 +143,7 @@ async function main(): Promise<void> {
 			filters: { app_active_days: 30, sources: ["instagram"] },
 		});
 		await call("import report", "/api/import-report");
+		await call("overview (home tiles)", "/api/overview", undefined, 200, OVERVIEW_BUDGET);
 
 		// The assistant's name check runs on every question: indexed ranges on profiles.email_norm, no model call.
 		console.log("Assistant name check (no model call):");

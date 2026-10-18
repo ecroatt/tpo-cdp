@@ -88,7 +88,7 @@ describe("SPEC 5 and 6 Assistant page", () => {
 
 	it("is linked from the nav of every page", () => {
 		for (const page of ["index.html", "lookup.html", "segments.html", "assistant.html"]) {
-			expect(read(page), page).toMatch(/<nav>[\s\S]*<a href="\/assistant">[^<]*<\/a>[\s\S]*<\/nav>/);
+			expect(read(page), page).toMatch(/<nav>[\s\S]*<a href="\/assistant"[^>]*>[^<]*<\/a>[\s\S]*<\/nav>/);
 		}
 	});
 

@@ -1,4 +1,5 @@
 import { clear, el, postJson, table } from "/api.js";
+import { prefillQuestion } from "/prefill.js";
 import { clearChart, drawChart } from "/charts.js";
 
 const form = document.getElementById("ask");
@@ -8,6 +9,8 @@ const box = document.getElementById("answer-box");
 const help = document.getElementById("unsupported-help");
 const canvas = document.getElementById("chart");
 const results = document.getElementById("results");
+
+prefillQuestion(location.search, input);
 
 const ERRORS = {
 	400: "Please type a question of up to 500 characters.",

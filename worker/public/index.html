@@ -10,7 +10,7 @@
 		<header>
 			<h1>TPO CDP</h1>
 			<nav>
-				<a href="/">Home</a>
+				<a href="/" aria-current="page">Home</a>
 				<a href="/lookup">Lookup</a>
 				<a href="/segments">Segments</a>
 				<a href="/assistant">Assistant</a>
@@ -20,17 +20,66 @@
 			</form>
 		</header>
 		<main>
+			<h2>Your audience at a glance</h2>
+			<div class="tiles">
+				<section class="tile">
+					<p class="tile-label">People</p>
+					<p class="tile-value" id="tile-people">—</p>
+				</section>
+				<section class="tile">
+					<p class="tile-label">Active newsletter subscribers</p>
+					<p class="tile-value" id="tile-active-subscribers">—</p>
+				</section>
+				<section class="tile">
+					<p class="tile-label">App users linked to a profile</p>
+					<p class="tile-value" id="tile-app-users">—</p>
+				</section>
+				<section class="tile">
+					<p class="tile-label">App events, last 30 days</p>
+					<p class="tile-value" id="tile-app-events">—</p>
+				</section>
+			</div>
+			<p id="overview-status" class="note"></p>
+
+			<h2>Start here</h2>
+			<div class="cards">
+				<a class="card link-card" href="/lookup">
+					<strong>Lookup</strong>
+					<span>Check one person: their newsletter status, site visits, app activity and engagement score.</span>
+				</a>
+				<a class="card link-card" href="/segments">
+					<strong>Segments</strong>
+					<span>Build an audience by source, signup date, opens and app use, and see who is in it.</span>
+				</a>
+				<a class="card link-card" href="/assistant">
+					<strong>Assistant</strong>
+					<span>Ask a question about the whole audience in plain English and get a number, a table or a chart.</span>
+				</a>
+			</div>
+
+			<h2>Try asking</h2>
+			<p class="note">These open the Assistant with the question filled in. Nothing is sent until you press Ask.</p>
+			<ul class="examples">
+				<li><a href="/assistant?q=How%20many%20Instagram%20signups%20went%20cold%20last%20month%3F">How many Instagram signups went cold last month?</a></li>
+				<li><a href="/assistant?q=Build%20me%20a%20list%20of%20our%20most%20engaged%20readers">Build me a list of our most engaged readers</a></li>
+				<li><a href="/assistant?q=Which%20pages%20do%20new%20subscribers%20hit%20first%3F">Which pages do new subscribers hit first?</a></li>
+				<li><a href="/assistant?q=Signups%20by%20month">Signups by month</a></li>
+			</ul>
+
 			<h2>Last import</h2>
+			<p>A data health check: what the last CSV import read, skipped, merged and linked.</p>
 			<p id="run-at">Loading...</p>
-			<table id="report">
-				<thead>
-					<tr>
-						<th>Metric</th>
-						<th>Value</th>
-					</tr>
-				</thead>
-				<tbody></tbody>
-			</table>
+			<div class="table-scroll">
+				<table id="report">
+					<thead>
+						<tr>
+							<th>Metric</th>
+							<th class="num">Value</th>
+						</tr>
+					</thead>
+					<tbody></tbody>
+				</table>
+			</div>
 		</main>
 		<script type="module" src="/home.js"></script>
 	</body>

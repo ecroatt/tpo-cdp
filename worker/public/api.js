@@ -37,7 +37,7 @@ export function table(headings, rows) {
 	const body = el("tbody");
 	for (const row of rows) {
 		const tr = el("tr");
-		for (const value of row) tr.append(el("td", value === null || value === undefined ? "" : value));
+		for (const value of row) tr.append(el("td", value === null || value === undefined ? "" : value, typeof value === "number" ? "num" : undefined));
 		body.append(tr);
 	}
 	t.append(body);
