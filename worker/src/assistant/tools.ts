@@ -27,7 +27,7 @@ export type Plan =
 export type PlanCheck = { ok: true; plan: Plan } | { ok: false };
 
 export interface Chart {
-	type: "bar";
+	type: "bar" | "line";
 	labels: string[];
 	values: number[];
 	title: string;
@@ -105,8 +105,16 @@ export function validatePlan(name: unknown, input: unknown): PlanCheck {
 	}
 }
 
+const DATE_LABEL = /^\d{4}-\d{2}(-\d{2})?$/;
+
+/** A line when at least one label is a YYYY-MM-DD or YYYY-MM date and every other label is "none"; otherwise a bar. */
+export function chartType(labels: string[]): "bar" | "line" {
+	const dates = labels.filter((l) => DATE_LABEL.test(l)).length;
+	return dates > 0 && labels.every((l) => l === "none" || DATE_LABEL.test(l)) ? "line" : "bar";
+}
+
 function groupsChart(groups: Group[], title: string): Chart {
-	return { type: "bar", labels: groups.map((g) => g.group), values: groups.map((g) => g.count), title };
+	return { type: chartType(groups.map((g) => g.group)), labels: groups.map((g) => g.group), values: groups.map((g) => g.count), title };
 }
 
 const byGroupName = (a: Group, b: Group): number => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0);
@@ -203,7 +211,7 @@ async function topPages(db: D1Database, filters: Filters, mode: PagesMode, limit
 		tool: "top_pages",
 		params: { filters, mode, limit, include_site_pages: includeSitePages },
 		rows: results,
-		chart: { type: "bar", labels: results.map((r) => r.page), values: results.map((r) => r.profiles), title },
+		chart: { type: chartType(results.map((r) => r.page)), labels: results.map((r) => r.page), values: results.map((r) => r.profiles), title },
 	};
 }
 

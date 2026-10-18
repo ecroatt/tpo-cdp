@@ -12,14 +12,14 @@ export function clearChart(canvas) {
 	canvas.hidden = true;
 }
 
-/** Draws a bar chart from `{ type, labels, values, title }`, replacing any chart already on the canvas. */
+/** Draws a bar or line chart (per `chart.type`, one colour, no fill) from `{ type, labels, values, title }`, replacing any chart already on the canvas. */
 export function drawChart(canvas, chart) {
 	clearChart(canvas);
 	if (!window.Chart || chart.labels.length === 0) return;
 	canvas.hidden = false;
 	const instance = new window.Chart(canvas, {
 		type: chart.type,
-		data: { labels: chart.labels, datasets: [{ label: chart.title, data: chart.values, backgroundColor: "#3b6ea5" }] },
+		data: { labels: chart.labels, datasets: [{ label: chart.title, data: chart.values, backgroundColor: "#3b6ea5", borderColor: "#3b6ea5", fill: false, tension: 0 }] },
 		options: {
 			responsive: true,
 			maintainAspectRatio: false,
