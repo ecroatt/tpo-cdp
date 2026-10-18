@@ -278,12 +278,13 @@ One validated filter object is shared by the Segments page, the assistant tools 
 - Only `src/assistant/model.ts` contains `api.anthropic.com` or `ANTHROPIC_API_KEY`.
 
 ## 6. Extra: chart answers
-- Charts come from data, never from the model's prose. Charts are built server-side as `{type:"bar", labels, values, title}`:
+- Charts come from data, never from the model's prose. Charts are built server-side as `{type, labels, values, title}`:
   - `breakdown` and `top_pages` always get one.
   - `build_segment` gets one by source.
-- The UI renders the chart above the table with Chart.js. The Segments page uses the same chart helper.
+- **Chart type:** `type` is `"line"` when the labels are dates or months, and `"bar"` otherwise. A label is a date or month when it matches `YYYY-MM-DD` or `YYYY-MM`. The labels count as dates when there is at least one such label and every other label is `none` (the "no newsletter row" group, kept as the last point so no profile drops out of the chart). So `breakdown` by `signup_month` (signups by month) is a line; by source, status, kind or cold, `top_pages` and `build_segment` are bars, and a chart with no labels is a bar. The type is picked by one function, `chartType(labels)`, from the labels alone, never by the model.
+- The UI renders the chart above the table with Chart.js, drawing `chart.type` as given. The Segments page uses the same chart helper (its by-source and by-status charts are bars).
 - The UI is static HTML and plain JavaScript in `public/` (one ES module per page plus a shared `api.js`), with no framework and no build step. Chart.js is the only library, vendored in `public/vendor/` at a pinned version, so the CSP stays `script-src 'self'`.
-- **Tests [workers]** `test/charts.spec.ts`: a `breakdown` result has chart labels and values equal to the DB counts, and `count_profiles` has no chart.
+- **Tests [workers]** `test/charts.spec.ts`: a `breakdown` result has chart labels and values equal to the DB counts, and `count_profiles` has no chart. `breakdown` by `signup_month` has `type: "line"` (with `none` last), every other chart has `type: "bar"`, and `chartType` returns `"line"` for month labels, day labels, and month labels plus `none`, and `"bar"` for no labels, only `none`, page paths, source names, and a mix of months and other text.
 
 ## 7. Extra: save answer as segment
 - `segments(segment_id TEXT PK random, name TEXT, definition TEXT JSON, origin TEXT CHECK IN ('builder','assistant'), created_at TEXT)`.
