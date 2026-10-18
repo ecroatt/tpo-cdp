@@ -3,7 +3,7 @@
 A mini customer data platform for The Pour Over assessment. It loads three CSV sources (newsletter subscribers, website events and app users) into one profile per person, takes signed app events over a webhook in real time, and has an AI assistant that answers questions about the audience without the model ever seeing an email, a name or a row of data.
 
 - **Lookup:** find anyone by email, profile id, app user id or visitor id, and see their newsletter status, site visits, app activity and engagement score.
-- **Segments:** filter by source, signup date, status, cold, site visits, app activity and engagement. You get a count, the top 50 profiles and charts.
+- **Segments:** filter by source, signup date, status, cold, not opened in N days, profile kind, has the app, app activity in the last N days and site visits. You get a count, the top 50 profiles by engagement score and charts.
 - **Assistant:** ask a question in plain English ("Which pages do new subscribers hit first?") and get an answer, the plan it ran ("How I read your question"), a table and a chart. A toggle shows exactly what the AI saw.
 - **Webhook:** app events (`app_open`, `read_story`, `link_click`, `login`) arrive signed and show up in lookup and segments right away, including anonymous events that a later login on the same device attaches to the right person.
 
@@ -83,6 +83,10 @@ npm run deploy
 
 Also set a spend limit in the Anthropic Console.
 
+### Engagement score
+
+Counted over the last 30 days: 3 points if the last newsletter open was in the last 7 days (otherwise 1 if in the last 30), 1 per linked site visit, 2 per `read_story`, and 1 per other app event (`app_open`, `link_click`, `login`). See `DECISIONS.md`.
+
 ## How PII is kept from the model
 
 - **The model never sees data.** It gets one fixed system prompt (definitions, filter names and values, page list), the tool definitions, and the operator's question. It returns one tool call, the plan. The server validates the plan, runs a fixed parameterized query and writes the answer from a template. Rows, counts and ids never go to the model, so even a tricked model has nothing to leak.
@@ -103,7 +107,7 @@ I planned the project and made the calls (see `DECISIONS.md`) in an interview wi
 
 - **More site pages:** add `/beliefs` and `/our-staff` to the site pages that `top_pages` leaves out by default, so they stop competing with articles.
 - **Save an answer as a segment** (SPEC §7, deferred): a "Save as segment" button on `build_segment` and `engagement_ranking` answers, stored as a live definition that re-runs when opened.
-- **Unfiltered queries near the read budget:** an unfiltered segment preview or `top_pages` reads about 17,000 to 22,000 rows against the 25,000-row budget, and grows with every profile and webhook event. Next: precompute scores and first pages, or cap the event window.
+- **Unfiltered queries near the read budget:** an unfiltered segment preview or `top_pages` reads about 15,000 to 22,500 rows against the 25,000-row budget, and grows with every profile and webhook event. Next: precompute scores and first pages, or cap the event window.
 - **Cloudflare Access** instead of the shared password, for per-person sign-in, SSO and an audit trail.
 - **From the security review** (details in `SECURITY.md` Known issues):
   - End all sessions when `UI_PASSWORD` rotates.

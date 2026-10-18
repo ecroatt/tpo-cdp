@@ -21,6 +21,20 @@ The calls I made in the Oct 17 interview, and the definitions the code uses. The
 | Top pages | Site pages (/, /subscribe, /about) left out by default; the answer names what it left out, and asking for them brings them back | The homepage and signup page aren't content. They'd top every list and hide what people actually read. | /beliefs and /our-staff still count as content; I'd add them to the list later |
 | First page | First content page; someone who only visited site pages isn't counted | If someone landed on the homepage first, the article they clicked next is the real first page that drew them in. | "First page" no longer means the literal first visit |
 
+## Engagement score
+
+Counted over the last 30 days (`worker/src/segments/engagement.ts`):
+
+| Signal | Points |
+| --- | --- |
+| Newsletter: last open in the last 7 days | 3 |
+| Newsletter: last open 8 to 30 days ago | 1 |
+| Each linked site visit | 1 |
+| Each `read_story` app event | 2 |
+| Each other owned app event (`app_open`, `link_click`, `login`) | 1 |
+
+The weights are a judgment call: reading a story is worth more than opening the app, and the newsletter side uses only the last open date because the data has no open counts.
+
 ## Definitions
 
 These come from `SPEC.md` §0 and are the rules the code and tests follow.
