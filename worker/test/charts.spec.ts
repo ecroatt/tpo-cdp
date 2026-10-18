@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { runTool, validatePlan } from "../src/assistant/tools";
+import { chartType, runTool, validatePlan } from "../src/assistant/tools";
 import { handleAssistant } from "../src/routes/assistant";
 import { askRequest, PAGE_A, PAGE_B, PAGE_C, scriptedModel, seedAssistantData } from "./fixtures/assistant";
 
@@ -51,7 +51,7 @@ describe("chart answers (SPEC section 6)", () => {
 		});
 		// Months run oldest first, with "none" last. July: 7. August: 1, 2, 3, 4, 5, 6, 8, 9. September: 10, 11, 12.
 		expect((await run("breakdown", { by: "signup_month" })).chart).toEqual({
-			type: "bar",
+			type: "line",
 			labels: ["2026-07", "2026-08", "2026-09", "none"],
 			values: [1, 8, 3, 1],
 			title: "Profiles by signup month",
@@ -82,6 +82,17 @@ describe("chart answers (SPEC section 6)", () => {
 		expect(result.count).toBe(11);
 		expect(result.chart).toEqual({ type: "bar", labels: ["instagram", "google", "direct", "x"], values: [7, 2, 1, 1], title: "Profiles by source" });
 		expect(result.rows).toHaveLength(11);
+	});
+
+	it("chartType picks a line for date or month labels (with optional none) and a bar otherwise", () => {
+		expect(chartType(["2026-07", "2026-08", "2026-09"])).toBe("line");
+		expect(chartType(["2026-09-01", "2026-09-02"])).toBe("line");
+		expect(chartType(["2026-07", "2026-08", "none"])).toBe("line");
+		expect(chartType([])).toBe("bar");
+		expect(chartType(["none"])).toBe("bar");
+		expect(chartType(["/shadrachs-picks", "/about"])).toBe("bar");
+		expect(chartType(["instagram", "google", "none"])).toBe("bar");
+		expect(chartType(["2026-08", "instagram"])).toBe("bar");
 	});
 
 	it("count_profiles has no chart and no rows", async () => {
