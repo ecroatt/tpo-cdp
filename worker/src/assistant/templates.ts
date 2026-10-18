@@ -1,5 +1,5 @@
 import type { Filters } from "../segments/filters";
-import type { ToolResult } from "./tools";
+import { SITE_PAGES, type ToolResult } from "./tools";
 
 const capitalize = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1);
 
@@ -41,12 +41,13 @@ export function answerFor(result: ToolResult): string {
 			return rows.length === 0 ? sentence : `${sentence} Showing the top ${rows.length} by engagement score.`;
 		}
 		case "top_pages": {
-			const { filters, mode } = params as { filters: Filters; mode: "all" | "first_visit" };
+			const { filters, mode, include_site_pages } = params as { filters: Filters; mode: "all" | "first_visit"; include_site_pages: boolean };
+				const leftOut = include_site_pages ? "" : ` Leaves out site pages: ${SITE_PAGES.join(", ")}.`;
 			const desc = describeFilters(filters);
-			if (rows.length === 0) return `No pages found for profiles matching ${desc}.`;
+			if (rows.length === 0) return `No pages found for profiles matching ${desc}.${leftOut}`;
 			const list = (rows as { page: string; profiles: number }[]).map((r) => `${r.page} (${r.profiles})`).join(", ");
 			const noun = mode === "first_visit" ? "first pages" : "pages";
-			return `Top ${rows.length} ${noun} for profiles matching ${desc}: ${list}.`;
+			return `Top ${rows.length} ${noun} for profiles matching ${desc}: ${list}.${leftOut}`;
 		}
 		case "breakdown": {
 			const { by, filters } = params as { by: string; filters: Filters };
