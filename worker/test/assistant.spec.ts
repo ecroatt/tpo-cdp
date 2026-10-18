@@ -41,6 +41,20 @@ import { call, loginCookie, postJson, resetAll } from "./fixtures/cdp";
 const LEAVES_OUT = ` Leaves out site pages: ${SITE_PAGES.join(", ")}.`;
 const Q1_DESC = "Instagram, signed up 2026-08-01 to 2026-08-31, cold";
 
+/** Ways to write an email so a plain pattern misses it. Each must be blocked, never sent to the model. */
+const DISGUISED_EMAILS: [string, string][] = [
+	["spaces around @", "jane @ gmail.com"],
+	["spelled out", "jane at gmail dot com"],
+	["(at) and (dot)", "jane(at)gmail(dot)com"],
+	["[at] and [dot]", "jane[at]gmail[dot]com"],
+	["percent-encoded @", "jane%40gmail.com"],
+	["html entity @", "jane&#64;gmail.com"],
+	["literal backslash-u0040", "jane\u0040gmail.com"],
+	["a typed email", "jane@gmail.com"],
+	["zero-width characters", "ja​ne@gmail.com"],
+	["fullwidth @", "jane＠gmail.com"],
+];
+
 const deps = (model: { fetch: typeof fetch }) => ({ fetch: model.fetch });
 
 async function ask(question: unknown, reply: Parameters<typeof scriptedModel>[0], testEnv: Env = env) {
@@ -71,6 +85,25 @@ describe("scrubQuestion", () => {
 		expect(scrubQuestion("a@b.co c@d.org")).toBe("[email] [email]");
 		expect(scrubQuestion("v_8001a480c8 d_aa11bb22 u_9f8e7d6c")).toBe("[id] [id] [id]");
 		expect(scrubQuestion(`profile ${pid(11)} please`)).toBe("profile [id] please");
+	});
+
+	it("replaces ids that carry _ or - after the prefix, and ids glued to a word with an underscore", () => {
+		expect(scrubQuestion("is d_sim_abc_phone active?")).toBe("is [id] active?");
+		expect(scrubQuestion("is u_ab-cd_12 active?")).toBe("is [id] active?");
+		expect(scrubQuestion("see x_u_2b6447a3 now")).toBe("see x_[id] now");
+	});
+
+	it("replaces a fullwidth @ email after NFKC, and an email with zero-width characters inside", () => {
+		expect(scrubQuestion("who is jane＠gmail.com?")).toBe("who is [email]?");
+		for (const zw of ["​", "‌", "‍", "⁠", "﻿"]) {
+			expect(scrubQuestion(`who is ja${zw}ne@gmail.com?`), JSON.stringify(zw)).toBe("who is [email]?");
+		}
+	});
+
+	it("keeps scrubbing the same text the same way on every call (no regex state)", () => {
+		for (let i = 0; i < 4; i++) {
+			expect(scrubQuestion("a@b.co and u_2b6447a3")).toBe("[email] and [id]");
+		}
 	});
 
 	it("leaves an ordinary question alone", () => {
@@ -168,6 +201,23 @@ describe("sendToModel", () => {
 			const model = scriptedModel({ name: "unsupported", input: { reason: "x" } });
 			await expect(sendToModel(buildModelRequest(`what about ${id}`), modelDeps(model))).rejects.toBeInstanceOf(PiiBlockedError);
 			await expect(sendToModel({ ...buildModelRequest("ok"), system: `see ${id}` }, modelDeps(model))).rejects.toBeInstanceOf(PiiBlockedError);
+			expect(model.calls).toHaveLength(0);
+		}
+	});
+
+	it("throws PiiBlockedError, with no fetch call, for every disguised email form in the body", async () => {
+		for (const [label, text] of DISGUISED_EMAILS) {
+			const model = scriptedModel({ name: "unsupported", input: { reason: "x" } });
+			await expect(sendToModel(buildModelRequest(`is ${text} one of them?`), modelDeps(model)), label).rejects.toBeInstanceOf(PiiBlockedError);
+			await expect(sendToModel({ ...buildModelRequest("ok"), system: `see ${text}` }, modelDeps(model)), label).rejects.toBeInstanceOf(PiiBlockedError);
+			expect(model.calls, label).toHaveLength(0);
+		}
+	});
+
+	it("throws PiiBlockedError for an id glued to a word or with underscores", async () => {
+		for (const id of ["d_sim_abc_phone", "x_u_2b6447a3"]) {
+			const model = scriptedModel({ name: "unsupported", input: { reason: "x" } });
+			await expect(sendToModel(buildModelRequest(`what about ${id}`), modelDeps(model))).rejects.toBeInstanceOf(PiiBlockedError);
 			expect(model.calls).toHaveLength(0);
 		}
 	});
@@ -580,6 +630,47 @@ describe("PII never reaches the model", () => {
 		expect(await response.json()).toEqual({ error: "blocked_pii" });
 		expect(model.calls).toHaveLength(0);
 		expect(touched).toEqual([]);
+	});
+});
+
+describe("disguised emails are blocked, not sent", () => {
+	it("each evasive form gets 422 blocked_pii through the route, with no fetch call and no SQL", async () => {
+		for (const [label, text] of DISGUISED_EMAILS.filter(([l]) => !["a typed email", "zero-width characters", "fullwidth @"].includes(l))) {
+			const model = scriptedModel(Q1.reply);
+			const { env: guarded, touched } = noSqlEnv();
+			const response = await handleAssistant(askRequest(`is ${text} one of them?`), guarded, { fetch: model.fetch });
+			expect(response.status, label).toBe(422);
+			expect(await response.json(), label).toEqual({ error: "blocked_pii" });
+			expect(model.calls, label).toHaveLength(0);
+			expect(touched, label).toEqual([]);
+		}
+	});
+
+	it("with a scrubber that misses them, all of them are still blocked by the guard in sendToModel (422, no fetch)", async () => {
+		for (const [label, text] of DISGUISED_EMAILS) {
+			const model = scriptedModel(Q1.reply);
+			const response = await handleAssistant(askRequest(`is ${text} one of them?`), env, { fetch: model.fetch, scrub: (q: string) => q });
+			expect(response.status, label).toBe(422);
+			expect(await response.json(), label).toEqual({ error: "blocked_pii" });
+			expect(model.calls, label).toHaveLength(0);
+		}
+	});
+
+	it("a zero-width or fullwidth email that scrubs cleanly is replaced, and the question goes on with one fetch call", async () => {
+		for (const text of ["ja​ne@gmail.com", "jane＠gmail.com"]) {
+			const { model, response } = await ask(`is ${text} one of them?`, Q1.reply);
+			expect(response.status).toBe(200);
+			expect(model.calls).toHaveLength(1);
+			expect(model.calls[0].body).not.toMatch(/jane|gmail/i);
+		}
+	});
+
+	it("ordinary questions with 'at' or a handle-free sentence are not blocked", async () => {
+		for (const q of ["How many signed up at the start of the month?", "Which pages do people look at first?", Q1.question]) {
+			const { model, response } = await ask(q, Q1.reply);
+			expect(response.status, q).toBe(200);
+			expect(model.calls, q).toHaveLength(1);
+		}
 	});
 });
 
