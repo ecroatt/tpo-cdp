@@ -1,6 +1,7 @@
 import { handleLogin, handleLogout } from "./auth/login";
 import { hasValidSession } from "./auth/session";
 import { csrfCheck } from "./http/csrf";
+import { declaredTooLarge, readCapped } from "./lib/body";
 import { json, withSecurityHeaders } from "./http/security";
 import { handleAssistant } from "./routes/assistant";
 import { handleImportReport } from "./routes/import-report";
@@ -9,6 +10,9 @@ import { handlePreview } from "./routes/segments";
 import { handleWebhook } from "./webhook/handler";
 
 /** Reachable without a session. Everything else goes through the gate. */
+/** Largest accepted body of a JSON /api POST: 8 KB. */
+const MAX_API_BODY_BYTES = 8 * 1024;
+
 const PUBLIC_PATHS = new Set(["/login", "/login.css", "/webhooks/app"]);
 
 async function route(request: Request, env: Env, url: URL): Promise<Response> {
@@ -24,6 +28,14 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 		if (path.startsWith("/api/")) {
 			const blocked = csrfCheck(request);
 			if (blocked) return blocked;
+			if (request.method !== "GET" && request.method !== "HEAD") {
+				// Size first, from Content-Length and while reading, before any handler parses the body.
+				const tooLarge = json({ error: "payload_too_large" }, 413);
+				if (declaredTooLarge(request, MAX_API_BODY_BYTES)) return tooLarge;
+				const bytes = await readCapped(request, MAX_API_BODY_BYTES);
+				if (bytes === null) return tooLarge;
+				request = new Request(request.url, { method: request.method, headers: request.headers, body: bytes });
+			}
 		}
 	}
 
