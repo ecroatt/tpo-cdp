@@ -195,6 +195,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-	console.error("perf failed:", err);
+	console.error("perf failed:", err instanceof Error ? err.name : "unknown");
 	process.exit(1);
 });
