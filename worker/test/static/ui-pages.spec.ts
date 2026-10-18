@@ -23,7 +23,8 @@ describe("SPEC 2 Lookup page", () => {
 
 	it("script reads #q, calls /api/lookup and renders Newsletter, Site visits and App activity cards", () => {
 		expect(js).toMatch(/getElementById\("q"\)/);
-		expect(js).toMatch(/\/api\/lookup\?q=\$\{encodeURIComponent\(/);
+		expect(js).toMatch(/postJson\(\s*"\/api\/lookup"\s*,\s*\{\s*q\s*\}/);
+		expect(js).not.toMatch(/\/api\/lookup\?/);
 		for (const title of ["Newsletter", "Site visits", "App activity"]) {
 			expect(js).toMatch(new RegExp(String.raw`card\(\s*"${title}"`));
 		}
