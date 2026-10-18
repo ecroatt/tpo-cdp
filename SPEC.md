@@ -117,7 +117,7 @@ One validated filter object is shared by the Segments page, the assistant tools 
 ### API and UI
 - `POST /api/segments/preview {filters}` returns the count, the first 50 rows (profile_id, email, source, status, signup, last open, score) and a chart dataset (count by source and by status).
 - `GET /api/segments/preview.csv` is out of scope.
-- **UI:** a filter form, the count, a table and a Chart.js bar chart. "Save segment" stores it (§7).
+- **UI:** a filter form, the count, a table and Chart.js bar charts. Saving a segment (§7) is deferred to the README's "What's next".
 - The brief's example "signed up from Instagram and haven't opened in 30 days" is `{sources:["instagram"], not_opened_days:30}`.
 
 ### Tests
@@ -225,8 +225,8 @@ One validated filter object is shared by the Segments page, the assistant tools 
 1. **Scrub the question** (`src/assistant/scrub.ts`):
    - Email patterns are replaced with `[email]`.
    - ID patterns (`u_…`, `d_…`, `v_…`, 32-hex profile_ids) are replaced with `[id]`. The `u_/d_/v_` pattern also takes `_` and `-` after the prefix (`d_sim_abc_phone`) and needs no word boundary before it (`x_u_2b6447a3`).
-   - Before matching, the question is NFKC-normalized (so a fullwidth `＠` becomes `@`) and zero-width characters (U+200B–U+200D, U+2060, U+FEFF) are removed.
-   - **Blocked, not scrubbed:** a question that still looks like it holds an email gets 422 `{ "error": "blocked_pii" }` and no model call: spaces around `@` (`jane @ gmail.com`), `%40`, `&#64;`, a typed `@`, or a spelled-out address (`jane at gmail dot com`, `(at)`, `[at]`, `(dot)`, `[dot]`). The same check runs inside `sendToModel` on the whole body.
+   - Before matching, the question is NFKC-normalized (so a fullwidth `＠` becomes `@`) and every format or default-ignorable character (Unicode `Cf` and `Default_Ignorable_Code_Point`, which covers zero-width characters and the soft hyphen) is removed. The email pattern takes Unicode letters and digits, so `jöhn@example.com` is replaced whole.
+   - **Blocked, not scrubbed:** a question that still looks like it holds an email gets 422 `{ "error": "blocked_pii" }` and no model call: spaces around `@` (`jane @ gmail.com`), `%40`, `&#64;` or `&#x40;` (with or without the `;`), a typed backslash escape `\u0040`, a spelled-out address (`jane at gmail dot com`, `jane at gmail.com`, and `at`/`dot` in `()`, `[]`, `{}` or `<>`). The same check runs inside `sendToModel` on the whole body.
    - **Name check:** a question in which two adjacent words are the first and last name from a stored email's local part gets 422 `{ "error": "blocked_pii" }` and no model call. Words are the runs of letters in the lowercased question. For each adjacent pair `a b`, the check looks for a `profiles.email_norm` that starts with `a.b`, `a_b` or `ab` followed directly by a digit or `@` (an indexed range on `profiles.email_norm`, so it reads only the matching rows, in statements that stay under D1's 100 bound parameters). So "is Julia Evans active?" is blocked when `julia.evans230@…` is stored. Names that are in no stored email, and single first names, cannot be detected (SECURITY.md known issues).
    - The UI tells the user that individual lookups belong on the Lookup page, and shows a plain message for `blocked_pii`.
    - **Rate limit:** `ASSISTANT_LIMITER`, 20 per 60 s per IP, returns 429 `{ "error": "rate_limited" }` with `Retry-After: 60` before the scrub, the name check or any model call.
@@ -269,7 +269,7 @@ One validated filter object is shared by the Segments page, the assistant tools 
 **[workers]** `test/assistant.spec.ts`. The model is replaced by a scripted fake `fetch` that returns a fixed tool_use plan.
 - `sendToModel` throws `PiiBlockedError` and makes no fetch call when an email is anywhere in the body (system prompt or message), and likewise for a `v_…` ID.
 - `scrub` replaces `Jane.Doe+x@Gmail.com` and `u_2b6447a3`, and also `d_sim_abc_phone`, `x_u_2b6447a3` and `jane＠gmail.com` (fullwidth).
-- Each of `jane @ gmail.com`, `jane at gmail dot com`, `jane(at)gmail(dot)com`, `jane%40gmail.com`, `jane&#64;gmail.com`, `jane@gmail.com` gets 422 `blocked_pii` with no fetch call, and `sendToModel` throws `PiiBlockedError` for each when it is in the body. A plain email hidden with a zero-width character or soft hyphen (`ja​ne@gmail.com`) is scrubbed to `[email]` like any plain email, and `sendToModel` blocks it if it reaches the body unscrubbed.
+- Each of `jane @ gmail.com`, `jane at gmail dot com`, `jane(at)gmail(dot)com`, `jane%40gmail.com`, `jane&#64;gmail.com`, `jane\u0040gmail.com` (a typed backslash escape) gets 422 `blocked_pii` with no fetch call, and `sendToModel` throws `PiiBlockedError` for each when it is in the body. A plain email hidden with a zero-width character or soft hyphen (`ja​ne@gmail.com`) is scrubbed to `[email]` like any plain email, and `sendToModel` blocks it if it reaches the body unscrubbed.
 - With a profile whose email is `julia.evans230@example.com`, "is Julia Evans active?" and "how engaged is julia evans" get 422 `blocked_pii` with no fetch call. "how many instagram signups are cold?" is not blocked and makes one fetch call. The name check reads at most 6 rows per adjacent word pair (at most 10 for a two-word question) for a question with no names on the `test/rows-read.spec.ts` seed, however many profiles there are.
 - Over the limit, a fake `ASSISTANT_LIMITER` makes the route return 429 with no fetch call.
 - A question that includes an email makes exactly one fetch call. The captured body contains no seeded email, profile_id, user_id or result count, and the browser response still contains the rows with emails.
@@ -294,7 +294,10 @@ One validated filter object is shared by the Segments page, the assistant tools 
 - The UI is static HTML and plain JavaScript in `public/` (one ES module per page plus a shared `api.js`), with no framework and no build step. Chart.js is the only library, vendored in `public/vendor/` at a pinned version, so the CSP stays `script-src 'self'`.
 - **Tests [workers]** `test/charts.spec.ts`: a `breakdown` result has chart labels and values equal to the DB counts, and `count_profiles` has no chart. `breakdown` by `signup_month` has `type: "line"` (with `none` last), every other chart has `type: "bar"`, and `chartType` returns `"line"` for month labels, day labels, and month labels plus `none`, and `"bar"` for no labels, only `none`, page paths, source names, and a mix of months and other text.
 
-## 7. Extra: save answer as segment
+## 7. Extra: save answer as segment (deferred, not built)
+
+Deferred under the Phase 4 cutoff so the security audit and docs got the time (DECISIONS.md). Nothing below exists in the code; it is the design for the README's "What's next".
+
 - `segments(segment_id TEXT PK random, name TEXT, definition TEXT JSON, origin TEXT CHECK IN ('builder','assistant'), created_at TEXT)`.
 - `definition` = `{tool: "build_segment" | "engagement_ranking", params}`. It is stored live: opening a segment re-runs it, so webhook events change its membership. It never stores a list of people.
 - Any assistant result from `build_segment` or `engagement_ranking` gets a **Save as segment** button that sends `POST /api/segments {name, definition}`. The server re-validates the definition and rejects other tools.
@@ -355,7 +358,7 @@ One validated filter object is shared by the Segments page, the assistant tools 
 - Too many logins get 429 with `Retry-After: 60` and an HTML login page, using a fake `Limiter` for `LOGIN_LIMITER` as in §4.
 - A 5 KB `POST /login` body and a 9 KB `/api/assistant` body each get 413.
 - `Cache-Control: no-store` is on a signed-in page (`/`) and on `/login`, and not on `/login.css`.
-- `POST /api/lookup` with a foreign `Origin` gets 403, and `GET /api/lookup?q=…` does not run a lookup.
+- **[workers]** `test/lookup.spec.ts` ("lookup is POST only"): `POST /api/lookup` with a foreign `Origin` gets 403, and `GET /api/lookup?q=…` does not run a lookup.
 
 **Requests and headers**
 - A POST to `/api/segments` with a foreign `Origin` gets 403.
@@ -440,14 +443,14 @@ The transcript must show all five:
 - **Scope:**
   - §5 assistant (scrub, plan call, tools, templates, `sendToModel`) and its page with the "What the AI saw" toggle.
   - §6 charts (assistant and Segments page).
-  - §7 save answer as segment.
+  - §7 save answer as segment (deferred at the cutoff; see §7).
 - **Your manual step:** `wrangler secret put ANTHROPIC_API_KEY`, and set a spend limit in the Anthropic Console.
 - **Build order:** §5 first, then §6, then §7.
 - **Cutoff:** at 4:45 pm, whatever of §6 and §7 isn't live is reverted and moved to the README's "What's next". §5 is a brief requirement and is never dropped. If §5 itself isn't live by 4:45, Phase 5 is shortened to make room for it instead.
 - **Tests:**
   - [workers] `test/assistant.spec.ts`
   - [workers] `test/charts.spec.ts`
-  - [workers] `test/saved-segments.spec.ts`
+  - [workers] `test/saved-segments.spec.ts` (deferred with §7; not written)
   - [static] `test/static/model-boundary.spec.ts`
 - **Live check:**
   - The three example questions from §5 each return an answer, a "How I read your question" plan, and a table or chart.
