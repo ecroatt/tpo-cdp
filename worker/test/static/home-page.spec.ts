@@ -191,7 +191,79 @@ describe("visual refresh", () => {
 		}
 	});
 
+	it("each stylesheet declares exactly one accent custom property, once", () => {
+		for (const file of ["style.css", "login.css"]) {
+			const names = [...read(file).matchAll(/(--[\w-]*accent[\w-]*)\s*:/g)].map((m) => m[1]);
+			expect(names, file).toEqual(["--accent"]);
+		}
+	});
+
+	describe("style.css rules", () => {
+		const css = read("style.css");
+		const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+
+		it("marks the current nav link", () => {
+			expect(rules.some((r) => /nav[^,]*\[aria-current="page"\]/.test(r.selector) && r.body.trim() !== "")).toBe(true);
+		});
+
+		it("has button hover and disabled rules", () => {
+			expect(rules.some((r) => /button:hover/.test(r.selector) && r.body.trim() !== "")).toBe(true);
+			expect(rules.some((r) => /button:disabled|button\[disabled\]/.test(r.selector) && r.body.trim() !== "")).toBe(true);
+		});
+
+		it("has a :focus-visible rule with an outline", () => {
+			expect(rules.some((r) => /:focus-visible/.test(r.selector) && /outline:\s*\S/.test(r.body))).toBe(true);
+		});
+
+		it("has a max-width media query at or above 375px that covers the layout", () => {
+			const m = css.match(/@media\s*\(max-width:\s*([\d.]+)(px|rem|em)\)\s*\{([\s\S]*)\}\s*$/);
+			expect(m).not.toBeNull();
+			const px = Number(m![1]) * (m![2] === "px" ? 1 : 16);
+			expect(px).toBeGreaterThanOrEqual(375);
+			expect(m![3]).toMatch(/\.tiles/);
+			expect(m![3]).toMatch(/grid-template-columns/);
+		});
+	});
+
 	it("api.js table() marks numeric cells with the num class", () => {
 		expect(read("api.js")).toMatch(/typeof value === "number"[\s\S]*"num"/);
+	});
+});
+
+describe("overview-tiles.js renderOverview", () => {
+	const KEYS = ["people", "active_subscribers", "app_users_linked", "app_events_30d"];
+	const fakeEls = () => Object.fromEntries([...KEYS, "status"].map((k) => [k, { textContent: "" }]));
+	const load = async () => (await import(/* @vite-ignore */ pathToFileURL(resolve(pub, "overview-tiles.js")).href)).renderOverview;
+	const tilesOf = (els: Record<string, { textContent: string }>) => Object.fromEntries(KEYS.map((k) => [k, els[k]]));
+
+	it("shows a dash in every tile and the status line when the response is not ok", async () => {
+		const renderOverview = await load();
+		const els = fakeEls();
+		for (const k of KEYS) els[k].textContent = "stale";
+		await renderOverview(tilesOf(els), els.status, { ok: false, json: async () => ({}) });
+		for (const k of KEYS) expect(els[k].textContent, k).toBe("—");
+		expect(els.status.textContent).toBe("The counts could not be loaded.");
+	});
+
+	it("shows a dash in every tile when the fetch failed or the body is not JSON", async () => {
+		const renderOverview = await load();
+		for (const response of [null, { ok: true, json: async () => { throw new Error("bad json"); } }]) {
+			const els = fakeEls();
+			await renderOverview(tilesOf(els), els.status, response);
+			for (const k of KEYS) expect(els[k].textContent, k).toBe("—");
+			expect(els.status.textContent).toBe("The counts could not be loaded.");
+		}
+	});
+
+	it("writes en-US formatted numbers and leaves the status empty on success", async () => {
+		const renderOverview = await load();
+		const els = fakeEls();
+		const counts = { people: 12345, active_subscribers: 1234567, app_users_linked: 0, app_events_30d: 999 };
+		await renderOverview(tilesOf(els), els.status, { ok: true, json: async () => counts });
+		expect(els.people.textContent).toBe("12,345");
+		expect(els.active_subscribers.textContent).toBe("1,234,567");
+		expect(els.app_users_linked.textContent).toBe("0");
+		expect(els.app_events_30d.textContent).toBe("999");
+		expect(els.status.textContent).toBe("");
 	});
 });
