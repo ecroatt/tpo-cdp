@@ -104,6 +104,21 @@ describe("buildModelRequest", () => {
 		expect(body.system).toContain("include_site_pages");
 	});
 
+	it("tells the model to set include_site_pages true only when the question asks about the home, subscribe or about pages", () => {
+		const topPages = body.tools.find((t) => t.name === "top_pages")!;
+		const prop = topPages.input_schema.properties.include_site_pages as { type: string; description: string };
+		const rule = /true only when the question asks about the home, subscribe or about pages/;
+		const line = body.system.split("\n").find((l) => l.includes("include_site_pages"));
+		expect(line).toBeDefined();
+		expect(line).toMatch(rule);
+		expect(prop.type).toBe("boolean");
+		expect(prop.description).toMatch(rule);
+		for (const text of [line!, prop.description]) {
+			expect(text).not.toMatch(/\balways\b/i);
+			expect(text).toMatch(/\bonly\b/);
+		}
+	});
+
 	it("never calls a content page a site page, and the include_site_pages wording names exactly SITE_PAGES", () => {
 		for (const line of body.system.split("\n")) {
 			if (/site pages?\b/i.test(line)) {
