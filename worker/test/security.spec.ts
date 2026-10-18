@@ -134,6 +134,12 @@ describe("login and session", () => {
 		};
 		const response = await call("/login", loginRequest(PASSWORD, "203.0.113.9"), { ...env, LOGIN_LIMITER: deny } as Env);
 		expect(response.status).toBe(429);
+		expect(response.headers.get("Retry-After")).toBe("60");
+		expect(response.headers.get("Content-Type")).toContain("text/html");
+		const page = await response.text();
+		expect(page).toContain("Too many attempts. Wait a minute and try again.");
+		expect(page).toContain('<form method="post" action="/login">');
+		expect(page).not.toContain("Wrong password.");
 		expect(response.headers.get("Set-Cookie")).toBeNull();
 		expect(seen).toEqual(["203.0.113.9"]);
 	});
