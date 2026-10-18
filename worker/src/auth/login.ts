@@ -1,4 +1,3 @@
-import { json } from "../http/security";
 import { declaredTooLarge, readCapped } from "../lib/body";
 import { clientKey, type Limiter } from "../lib/limiter";
 import { loginPage } from "./login-page";
@@ -16,7 +15,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
 	// 10 attempts per 60 s per IP, checked before any password work.
 	const limiter = env.LOGIN_LIMITER as Limiter;
 	const { success } = await limiter.limit({ key: clientKey(request) });
-	if (!success) return json({ error: "rate_limited" }, 429);
+	if (!success) return loginPage(false, 429, "Too many attempts. Wait a minute and try again.", { "Retry-After": "60" });
 
 	// Size first, from Content-Length and while reading, before the form is parsed.
 	if (declaredTooLarge(request, MAX_LOGIN_BYTES)) return new Response("Payload Too Large", { status: 413 });

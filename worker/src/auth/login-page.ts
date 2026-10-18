@@ -1,5 +1,7 @@
-export function loginPage(failed: boolean, status = 200): Response {
-	const message = failed ? '<p class="error" role="alert">Wrong password.</p>' : "";
+/** The sign-in form. `failed` shows "Wrong password."; `message` shows its own plain text instead. */
+export function loginPage(failed: boolean, status = 200, message?: string, headers: HeadersInit = {}): Response {
+	const notice = message ?? (failed ? "Wrong password." : "");
+	const line = notice === "" ? "" : `<p class="error" role="alert">${notice}</p>`;
 	const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,11 +17,11 @@ export function loginPage(failed: boolean, status = 200): Response {
 <label for="password">Password</label>
 <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
 <button type="submit">Sign in</button>
-${message}
+${line}
 </form>
 </main>
 </body>
 </html>
 `;
-	return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
+	return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8", ...headers } });
 }
