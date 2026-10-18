@@ -66,7 +66,7 @@ D1 migrations live in `migrations_dir` on the `d1_databases` entry. This is unre
 
 ## 2. Finds anyone (lookup)
 
-- `GET /api/lookup?q=<value>` uses exact matching only and no partial search. Matching order:
+- `POST /api/lookup {q}` (JSON body, so the searched value never appears in a URL or a request log; it passes the §8 CSRF check like every state-changing `/api` call) uses exact matching only and no partial search. There is no `GET /api/lookup`. Matching order:
   1. Contains `@`: `normalizeEmail(q)` matched against `profiles.email_norm`.
   2. Then `q` is tried as a `profile_id`, a `user_id` (via `user_links`) and a `visitor_id`.
 - **Response for a profile:**
@@ -224,8 +224,12 @@ One validated filter object is shared by the Segments page, the assistant tools 
 ### Flow (`POST /api/assistant {question}`)
 1. **Scrub the question** (`src/assistant/scrub.ts`):
    - Email patterns are replaced with `[email]`.
-   - ID patterns (`u_…`, `d_…`, `v_…`, 32-hex profile_ids) are replaced with `[id]`.
-   - The UI tells the user that individual lookups belong on the Lookup page.
+   - ID patterns (`u_…`, `d_…`, `v_…`, 32-hex profile_ids) are replaced with `[id]`. The `u_/d_/v_` pattern also takes `_` and `-` after the prefix (`d_sim_abc_phone`) and needs no word boundary before it (`x_u_2b6447a3`).
+   - Before matching, the question is NFKC-normalized (so a fullwidth `＠` becomes `@`) and zero-width characters (U+200B–U+200D, U+2060, U+FEFF) are removed.
+   - **Blocked, not scrubbed:** a question that still looks like it holds an email gets 422 `{ "error": "blocked_pii" }` and no model call: spaces around `@` (`jane @ gmail.com`), `%40`, `&#64;`, a typed `@`, or a spelled-out address (`jane at gmail dot com`, `(at)`, `[at]`, `(dot)`, `[dot]`). The same check runs inside `sendToModel` on the whole body.
+   - **Name check:** a question in which two adjacent words are the first and last name from a stored email's local part gets 422 `{ "error": "blocked_pii" }` and no model call. Words are the runs of letters in the lowercased question. For each adjacent pair `a b`, the check looks for a `profiles.email_norm` that starts with `a.b`, `a_b` or `ab` followed directly by a digit or `@` (an indexed range on `profiles.email_norm`, so it reads only the matching rows, in statements that stay under D1's 100 bound parameters). So "is Julia Evans active?" is blocked when `julia.evans230@…` is stored. Names that are in no stored email, and single first names, cannot be detected (SECURITY.md known issues).
+   - The UI tells the user that individual lookups belong on the Lookup page, and shows a plain message for `blocked_pii`.
+   - **Rate limit:** `ASSISTANT_LIMITER`, 20 per 60 s per IP, returns 429 `{ "error": "rate_limited" }` with `Retry-After: 60` before the scrub, the name check or any model call.
 2. **One-shot plan.** There is exactly one model call per question, to Claude Haiku 5.5 (`claude-haiku-5-5`) through the Anthropic Messages API:
    - Settings: `max_tokens` 512, and no `temperature`, `top_p` or `top_k` (Claude Haiku 5.5 rejects any non-default sampling parameter with a 400). The forced tool call and the fixed answer templates keep the output deterministic in shape.
    - The request uses `tools` with `tool_choice: {type: "any"}`, so the model must reply with exactly one tool call, which is the plan `{tool, params}`. Any text it adds alongside the call is ignored.
@@ -264,7 +268,10 @@ One validated filter object is shared by the Segments page, the assistant tools 
 ### Tests
 **[workers]** `test/assistant.spec.ts`. The model is replaced by a scripted fake `fetch` that returns a fixed tool_use plan.
 - `sendToModel` throws `PiiBlockedError` and makes no fetch call when an email is anywhere in the body (system prompt or message), and likewise for a `v_…` ID.
-- `scrub` replaces `Jane.Doe+x@Gmail.com` and `u_2b6447a3`.
+- `scrub` replaces `Jane.Doe+x@Gmail.com` and `u_2b6447a3`, and also `d_sim_abc_phone`, `x_u_2b6447a3` and `jane＠gmail.com` (fullwidth).
+- Each of `jane @ gmail.com`, `jane at gmail dot com`, `jane(at)gmail(dot)com`, `jane%40gmail.com`, `jane&#64;gmail.com`, `jane@gmail.com` and `ja​ne@gmail.com` (zero-width) gets 422 `blocked_pii` with no fetch call, and `sendToModel` throws `PiiBlockedError` for each when it is in the body.
+- With a profile whose email is `julia.evans230@example.com`, "is Julia Evans active?" and "how engaged is julia evans" get 422 `blocked_pii` with no fetch call. "how many instagram signups are cold?" is not blocked and makes one fetch call. The name check reads at most 10 rows for a question with no names on the `test/rows-read.spec.ts` seed.
+- Over the limit, a fake `ASSISTANT_LIMITER` makes the route return 429 with no fetch call.
 - A question that includes an email makes exactly one fetch call. The captured body contains no seeded email, profile_id, user_id or result count, and the browser response still contains the rows with emails.
 - Each of the three example questions, given the expected scripted plan, returns the correct count or pages against fixtures, with the templated answer.
 - `first_visit` picks a visit before signup when one exists, across two linked visitor_ids.
@@ -276,6 +283,7 @@ One validated filter object is shared by the Segments page, the assistant tools 
 
 **[static]** `test/static/model-boundary.spec.ts`:
 - Only `src/assistant/model.ts` contains `api.anthropic.com` or `ANTHROPIC_API_KEY`.
+- No file in `src/` or `scripts/` uses another model path: `env.AI`, a Workers AI `.run("@cf/…")`, `gateway.ai.cloudflare.com`, `api.openai.com`, `generativelanguage.googleapis.com`, or an `Authorization: Bearer` header. `wrangler.jsonc` has no `ai` binding.
 
 ## 6. Extra: chart answers
 - Charts come from data, never from the model's prose. Charts are built server-side as `{type, labels, values, title}`:
@@ -301,7 +309,8 @@ One validated filter object is shared by the Segments page, the assistant tools 
 
 ### UI password
 - `GET /login` serves the form. `POST /login` takes a form field `password`.
-- **Login rate limit:** `LOGIN_LIMITER`, 10 per 60 s per IP, returns 429.
+- **Login rate limit:** `LOGIN_LIMITER`, 10 per 60 s per IP, returns 429 with `Retry-After: 60` and the login page (HTML) saying "Too many attempts. Wait a minute and try again."
+- **Body size:** `POST /login` gets 413 when its body is over 4 KB, and a JSON `/api` POST gets 413 `{ "error": "payload_too_large" }` when its body is over 8 KB, checked from `Content-Length` and while reading, before the body is parsed.
 - **Compare:** the password is checked against `UI_PASSWORD` in constant time: HMAC both values with a per-request key, then `timingSafeEqual`.
 - **Session:**
   - On success, 32 random bytes are generated and the SHA-256 of the token is stored in `sessions(token_hash PK, created_at, expires_at)`, which expires after 12 h.
@@ -328,7 +337,7 @@ One validated filter object is shared by the Segments page, the assistant tools 
   - `X-Content-Type-Options: nosniff`
   - `Referrer-Policy: no-referrer`
   - `Strict-Transport-Security: max-age=31536000`
-  - `Cache-Control: no-store` on `/api/*`
+  - `Cache-Control: no-store` on every response except the public `/login.css` (pages, `/api/*`, scripts and `/login` included)
 - **Errors and logs:** errors return generic JSON (`{"error":"internal"}`) with no stack traces. Logs record route, status and error class only, never emails, bodies or question text.
 - **SQL:** every query uses `.bind()`. The only dynamic SQL is fixed fragments chosen by the validator.
 - **Rendering:** the UI writes all data with `textContent` or `createElement`, never `innerHTML`, `outerHTML`, `insertAdjacentHTML` or `document.write`.
@@ -343,7 +352,10 @@ One validated filter object is shared by the Segments page, the assistant tools 
 - `/` without a session redirects to `/login`.
 - An expired session gets 401.
 - After logout the old token gets 401.
-- Too many logins get 429, using a fake `Limiter` for `LOGIN_LIMITER` as in §4.
+- Too many logins get 429 with `Retry-After: 60` and an HTML login page, using a fake `Limiter` for `LOGIN_LIMITER` as in §4.
+- A 5 KB `POST /login` body and a 9 KB `/api/assistant` body each get 413.
+- `Cache-Control: no-store` is on a signed-in page (`/`) and on `/login`, and not on `/login.css`.
+- `POST /api/lookup` with a foreign `Origin` gets 403, and `GET /api/lookup?q=…` does not run a lookup.
 
 **Requests and headers**
 - A POST to `/api/segments` with a foreign `Origin` gets 403.
@@ -478,7 +490,7 @@ The transcript must show all five:
 - **Email normalization:** trim and lowercase only, so `a.b@gmail.com` and `ab@gmail.com` are different people.
 - **Today is fixed:** the "today" constant makes all time windows static. Live events dated after `TODAY` count in every window, by design.
 - **Engagement weights:** they are a judgment call and haven't been validated against outcomes. The newsletter side uses only the last open date, because the data has no open counts.
-- **Question scrubbing:** it catches emails and ID patterns, not names typed into a question. The data has no names, and the guard in `sendToModel` blocks emails and IDs only.
+- **Question scrubbing:** it catches emails (including spelled-out and encoded forms) and ID patterns, and blocks first-and-last-name pairs that match a stored email. A name that is in no stored email, or a first name alone, still reaches the model if typed.
 - **One tool per question:** questions that need two steps (e.g. "compare cold rates for Instagram vs Google signups this month and last") can't be chained. The model picks the closest single tool or `unsupported`.
 - **Misreadings:** the model can misread a question into the wrong filters. Answers are templated from real results, so the numbers are right for the plan it chose, and the UI shows that plan so the user can catch a misreading.
 - **Sessions:** the sessions table grows until the next login cleanup runs.
