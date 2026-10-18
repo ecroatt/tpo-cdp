@@ -49,10 +49,10 @@ const DISGUISED_EMAILS: [string, string][] = [
 	["[at] and [dot]", "jane[at]gmail[dot]com"],
 	["percent-encoded @", "jane%40gmail.com"],
 	["html entity @", "jane&#64;gmail.com"],
-	["literal backslash-u0040", "jane\u0040gmail.com"],
+	["literal backslash-u0040", "jane\\u0040gmail.com"],
 	["a typed email", "jane@gmail.com"],
-	["zero-width characters", "ja​ne@gmail.com"],
-	["fullwidth @", "jane＠gmail.com"],
+	["zero-width characters", "ja\u200Bne@gmail.com"],
+	["fullwidth @", "jane\uFF20gmail.com"],
 ];
 
 const deps = (model: { fetch: typeof fetch }) => ({ fetch: model.fetch });
@@ -94,8 +94,8 @@ describe("scrubQuestion", () => {
 	});
 
 	it("replaces a fullwidth @ email after NFKC, and an email with zero-width characters inside", () => {
-		expect(scrubQuestion("who is jane＠gmail.com?")).toBe("who is [email]?");
-		for (const zw of ["​", "‌", "‍", "⁠", "﻿"]) {
+		expect(scrubQuestion("who is jane\uFF20gmail.com?")).toBe("who is [email]?");
+		for (const zw of ["\u200B", "\u200C", "\u200D", "\u2060", "\uFEFF"]) {
 			expect(scrubQuestion(`who is ja${zw}ne@gmail.com?`), JSON.stringify(zw)).toBe("who is [email]?");
 		}
 	});
@@ -657,7 +657,7 @@ describe("disguised emails are blocked, not sent", () => {
 	});
 
 	it("a zero-width or fullwidth email that scrubs cleanly is replaced, and the question goes on with one fetch call", async () => {
-		for (const text of ["ja​ne@gmail.com", "jane＠gmail.com"]) {
+		for (const text of ["ja\u200Bne@gmail.com", "jane\uFF20gmail.com"]) {
 			const { model, response } = await ask(`is ${text} one of them?`, Q1.reply);
 			expect(response.status).toBe(200);
 			expect(model.calls).toHaveLength(1);
