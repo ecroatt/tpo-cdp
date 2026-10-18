@@ -1,6 +1,6 @@
 import { ModelUnavailableError, PiiBlockedError, sendToModel } from "../assistant/model";
 import { buildModelRequest } from "../assistant/prompt";
-import { scrubQuestion } from "../assistant/scrub";
+import { hasDisguisedEmail, scrubQuestion } from "../assistant/scrub";
 import { answerFor } from "../assistant/templates";
 import { runTool, validatePlan } from "../assistant/tools";
 import { json } from "../http/security";
@@ -31,7 +31,12 @@ export async function handleAssistant(request: Request, env: Env, deps: Assistan
 		return json({ error: "invalid_question" }, 400);
 	}
 
-	const body = buildModelRequest((deps.scrub ?? scrubQuestion)(question.trim()));
+	// An address written so the scrubber cannot replace it (spaces around "@", %40, "jane at gmail dot com") is
+	// refused outright: no model call and no SQL.
+	const scrubbed = (deps.scrub ?? scrubQuestion)(question.trim());
+	if (hasDisguisedEmail(scrubbed)) return json({ error: "blocked_pii" }, 422);
+
+	const body = buildModelRequest(scrubbed);
 	let reply;
 	try {
 		reply = await sendToModel(body, { env, fetch: deps.fetch });
