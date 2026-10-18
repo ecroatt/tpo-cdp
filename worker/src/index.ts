@@ -9,10 +9,10 @@ import { handleLookup } from "./routes/lookup";
 import { handlePreview } from "./routes/segments";
 import { handleWebhook } from "./webhook/handler";
 
-/** Reachable without a session. Everything else goes through the gate. */
 /** Largest accepted body of a JSON /api POST: 8 KB. */
 const MAX_API_BODY_BYTES = 8 * 1024;
 
+/** Reachable without a session. Everything else goes through the gate. */
 const PUBLIC_PATHS = new Set(["/login", "/login.css", "/webhooks/app"]);
 
 async function route(request: Request, env: Env, url: URL): Promise<Response> {
