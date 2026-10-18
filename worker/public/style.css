@@ -1,6 +1,5 @@
 :root {
 	--accent: #1f5fbf;
-	--accent-dark: #174a96;
 	--text: #1a1a1a;
 	--muted: #5b6470;
 	--border: #d9dee5;
@@ -125,8 +124,8 @@ button {
 }
 
 button:hover {
-	background: var(--accent-dark);
-	border-color: var(--accent-dark);
+	background: color-mix(in srgb, var(--accent) 85%, black);
+	border-color: color-mix(in srgb, var(--accent) 85%, black);
 }
 
 button:disabled {
@@ -143,7 +142,7 @@ header button {
 
 header button:hover {
 	background: var(--background);
-	color: var(--accent-dark);
+	color: color-mix(in srgb, var(--accent) 85%, black);
 }
 
 a:focus-visible,

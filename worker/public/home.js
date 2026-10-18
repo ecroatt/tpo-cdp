@@ -1,5 +1,7 @@
 // Home page: headline tiles and the last import. Data is only ever written with textContent.
 
+import { renderOverview } from "/overview-tiles.js";
+
 const LABELS = {
 	subscribers_rows_read: "Subscriber rows read",
 	subscribers_blank_rows: "Subscriber blank rows skipped",
@@ -37,15 +39,14 @@ const overviewStatus = document.getElementById("overview-status");
 const format = (n) => Number(n).toLocaleString("en-US");
 
 async function loadOverview() {
+	let response = null;
 	try {
-		const response = await fetch("/api/overview", { headers: { Accept: "application/json" } });
-		if (!response.ok) throw new Error("overview");
-		const counts = await response.json();
-		for (const [key, id] of Object.entries(TILES)) document.getElementById(id).textContent = format(counts[key]);
+		response = await fetch("/api/overview", { headers: { Accept: "application/json" } });
 	} catch {
-		for (const id of Object.values(TILES)) document.getElementById(id).textContent = "—";
-		overviewStatus.textContent = "The counts could not be loaded.";
+		response = null;
 	}
+	const tiles = Object.fromEntries(Object.entries(TILES).map(([key, id]) => [key, document.getElementById(id)]));
+	await renderOverview(tiles, overviewStatus, response);
 }
 
 async function loadReport() {

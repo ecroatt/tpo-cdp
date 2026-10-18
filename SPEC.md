@@ -387,7 +387,7 @@ The home page (`/`, `public/index.html` and `public/home.js`) replaces the Phase
 
 - **Why 30 days for events:** an all-time event count reads every event row, so it grows with every webhook send. On the perf data the four counts read about 11,400 rows with an all-time event count and about 8,450 with the 30-day window, which uses the existing `app_events(ts, …)` covering index. No new migration.
 - **Read budget:** under 10,000 rows read per call on the `npm run perf` data. `scripts/perf.ts` lists `overview` and marks it OVER BUDGET (exit 1) at 10,000 or more, separately from the 25,000 budget of the other calls.
-- `home.js` writes each number with `toLocaleString("en-US")` through `textContent`. If the call fails, the tiles show "—" and one line says the counts could not be loaded; the rest of the page still works.
+- `home.js` hands the response to `overview-tiles.js` (`renderOverview`, no imports), which writes each number with `toLocaleString("en-US")` through `textContent`. If the call fails, the tiles show "—" and one line says the counts could not be loaded; the rest of the page still works.
 
 ### Start here
 Three cards, each a link with one plain sentence:

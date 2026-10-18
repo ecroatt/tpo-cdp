@@ -44,7 +44,7 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
 	if (path === "/logout") return handleLogout(request, env);
 	if (path === "/api/import-report" && request.method === "GET") return handleImportReport(env);
 	if (path === "/api/overview" && request.method === "GET") return handleOverview(env);
-	if (path === "/api/lookup" &&request.method === "POST") return handleLookup(request, env);
+	if (path === "/api/lookup" && request.method === "POST") return handleLookup(request, env);
 	if (path === "/api/segments/preview" && request.method === "POST") return handlePreview(request, env);
 	if (path === "/api/assistant" && request.method === "POST") return handleAssistant(request, env);
 	if (path.startsWith("/api/")) return json({ error: "not_found" }, 404);

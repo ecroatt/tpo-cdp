@@ -1,6 +1,5 @@
 :root {
 	--accent: #1f5fbf;
-	--accent-dark: #174a96;
 }
 
 * {
@@ -57,8 +56,8 @@ button {
 }
 
 button:hover {
-	background: var(--accent-dark);
-	border-color: var(--accent-dark);
+	background: color-mix(in srgb, var(--accent) 85%, black);
+	border-color: color-mix(in srgb, var(--accent) 85%, black);
 }
 
 button:disabled {
