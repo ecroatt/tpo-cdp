@@ -3,6 +3,7 @@
 import { resolve } from "node:path";
 import { getPlatformProxy } from "wrangler";
 import worker from "../src/index";
+import { questionNamesSomeone } from "../src/assistant/names";
 import { runTool, validatePlan } from "../src/assistant/tools";
 import { COOKIE_NAME, sha256Hex } from "../src/auth/session";
 import { applyPerfSeed, buildPerfSeed } from "./lib/perf-seed";
@@ -140,6 +141,25 @@ async function main(): Promise<void> {
 			filters: { app_active_days: 30, sources: ["instagram"] },
 		});
 		await call("import report", "/api/import-report");
+
+		// The assistant's name check runs on every question: indexed ranges on profiles.email_norm, no model call.
+		console.log("Assistant name check (no model call):");
+		for (const question of [
+			"How many Instagram signups went cold last month?",
+			"Which pages did the people who signed up in the last week read first, and how many of them came back?",
+		]) {
+			recorder.reset();
+			const found = await questionNamesSomeone(recorder.db, question);
+			const rows = recorder.rowsRead();
+			const over = rows >= ROWS_READ_BUDGET;
+			console.log(
+				`name check, ${String(question.split(" ").length).padStart(2)} words`.padEnd(58) +
+					` statements ${String(recorder.statements()).padStart(3)}  rows_read ${String(rows).padStart(8)}  blocked ${found}` +
+					(over ? "  <== OVER BUDGET (" + ROWS_READ_BUDGET + " or more)" : ""),
+			);
+			if (over) failed = true;
+		}
+		console.log("");
 
 		// Every query type the assistant can run, straight through the tools (no model call), each with no filters and
 		// with realistic filter sets: the brief's Q1 filters, Q3's new-subscriber filter and an app_active_days filter.
