@@ -373,6 +373,23 @@ describe("requests and headers", () => {
 		expect(responses[4].headers.get("Cache-Control")).toBe("no-store");
 	});
 
+	it("Cache-Control: no-store is on pages, scripts, redirects and /login, and not on /login.css", async () => {
+		const cookie = await login();
+		const withCookie = { headers: { Cookie: cookie } };
+		const stored = {
+			"/login": await call("/login"),
+			"/ signed in": await call("/", withCookie),
+			"/lookup.js": await call("/lookup.js", withCookie),
+			"/api.js": await call("/api.js", withCookie),
+			"/ redirect": await call("/"),
+			"/login wrong password": await call("/login", loginRequest("nope", "198.51.100.41")),
+		};
+		for (const [label, response] of Object.entries(stored)) expect(response.headers.get("Cache-Control"), label).toBe("no-store");
+		const css = await call("/login.css");
+		expect(css.status).toBe(200);
+		expect(css.headers.get("Cache-Control")).not.toBe("no-store");
+	});
+
 	it("a 500 response body contains no stack trace", async () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		// A real failure: with no database binding, creating the session throws inside the handler.
