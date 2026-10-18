@@ -370,6 +370,70 @@ Deferred under the Phase 4 cutoff so the security audit and docs got the time (D
 - No `TODO` or `FIXME` in `src/` or `scripts/`.
 - No `innerHTML`, `outerHTML`, `insertAdjacentHTML` or `document.write` in `public/` outside `public/vendor/`.
 
+## 9. Home page and visual refresh
+
+The home page (`/`, `public/index.html` and `public/home.js`) replaces the Phase 1 placeholder with a start screen for someone on the growth team. Sections, top to bottom: headline tiles, "Start here", "Try asking", "Last import".
+
+### Headline tiles (`GET /api/overview`)
+- Behind the session gate like every `/api` route: 401 `{ "error": "unauthorized" }` without a session. GET only; any other method gets the existing 404 `{ "error": "not_found" }`.
+- Returns `{ people, active_subscribers, app_users_linked, app_events_30d }`, all integers, from parameterized SQL in `src/routes/overview.ts`:
+
+| Field | Tile label | Definition |
+|---|---|---|
+| `people` | People | `COUNT(*)` of `profiles`, every kind (§1). |
+| `active_subscribers` | Active newsletter subscribers | `COUNT(*)` of `subscribers` with `status = 'active'` (bound). |
+| `app_users_linked` | App users linked to a profile | `COUNT(*)` of `user_links` (§1, §4: every app user, from the CSV or the webhook, gets one). |
+| `app_events_30d` | App events, last 30 days | `COUNT(*)` of `app_events` with `ts >= LAST_30_START` (bound; §0 "Last 30 days", so live events dated after `TODAY` count). Every `app_events` row arrives through `POST /webhooks/app` (§4). |
+
+- **Why 30 days for events:** an all-time event count reads every event row, so it grows with every webhook send. On the perf data the four counts read about 11,400 rows with an all-time event count and about 8,450 with the 30-day window, which uses the existing `app_events(ts, …)` covering index. No new migration.
+- **Read budget:** under 10,000 rows read per call on the `npm run perf` data. `scripts/perf.ts` lists `overview` and marks it OVER BUDGET (exit 1) at 10,000 or more, separately from the 25,000 budget of the other calls.
+- `home.js` writes each number with `toLocaleString("en-US")` through `textContent`. If the call fails, the tiles show "—" and one line says the counts could not be loaded; the rest of the page still works.
+
+### Start here
+Three cards, each a link with one plain sentence:
+- **Lookup** (`/lookup`): "Check one person: their newsletter status, site visits, app activity and engagement score."
+- **Segments** (`/segments`): "Build an audience by source, signup date, opens and app use, and see who is in it."
+- **Assistant** (`/assistant`): "Ask a question about the whole audience in plain English and get a number, a table or a chart."
+
+### Try asking
+- Four links, written as static `href`s in `index.html`, each to `/assistant?q=<question>` with the question URL-encoded:
+  - "How many Instagram signups went cold last month?"
+  - "Build me a list of our most engaged readers"
+  - "Which pages do new subscribers hit first?"
+  - "Signups by month"
+- **Prefill** (`public/prefill.js`, imported by `assistant.js`): `prefillQuestion(search, textarea)` reads `q` from the URL search string and, if it is non-empty, sets `textarea.value` to its first 500 characters. It never submits the form, calls `requestSubmit`, `submit` or `click`, dispatches an event, or calls `fetch` or `postJson`, because each ask is a paid model call; the user presses Ask. With no `q` the textarea stays empty. `prefill.js` has no imports, so the static tests can load it in Node.
+
+### Last import
+- The existing `/api/import-report` table moves below the other sections under the heading "Last import", with one sentence: "A data health check: what the last CSV import read, skipped, merged and linked."
+- Metric keys are shown with readable labels from one fixed map in `home.js` (for example `subscribers_duplicates_merged` → "Subscriber duplicates merged", `visitors_linked` → "Web visitors linked to a profile"). Every metric the import writes (§1, `src/import/build.ts`) has a label; an unknown key falls back to the raw key. Values are right-aligned.
+- `#run-at` and `#report` keep their ids.
+
+### Visual refresh
+- Styling changes only in `public/style.css` and `public/login.css`, plus the HTML changes above and `aria-current="page"` on the active nav link of each page (`index.html` Home, `lookup.html` Lookup, `segments.html` Segments, `assistant.html` Assistant).
+- Light background, one accent color (defined once as a CSS custom property in each stylesheet), white cards with a light border and radius, and a header bar holding the title, the nav and Sign out. The active nav link is styled from `[aria-current="page"]`.
+- Numbers in tables are right-aligned: `api.js` `table()` adds a `num` class to a cell whose value is a number, and the import table's value cells get it too.
+- Buttons have clear default, hover and disabled styles, and every interactive element has a visible `:focus-visible` outline.
+- Readable at 375 px wide with no horizontal page scroll: the header wraps, tiles and cards stack into one column, and wide tables scroll inside their own container.
+- System font stack only (`system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`). No `@import`, no `url(http…)`, no `@font-face`, no CDN, no `style=` attributes and no inline `<script>` or `<style>`, so the CSP is unchanged.
+- No TPO logo, name styling or brand colors; the title stays "TPO CDP" as plain text.
+- Every existing id, `name`, form and script tag that the §2, §3, §5 and §6 tests rely on stays as is.
+
+### Tests
+**[workers]** `test/overview.spec.ts`:
+- With a session, `GET /api/overview` returns 200 and counts equal to hand-derived values on a seeded fixture: profiles of all three kinds, subscribers with both statuses, CSV and webhook app users, and app events inside and before the 30-day window (one dated after `TODAY`).
+- Without a session it returns 401, and with an expired session 401.
+- `POST /api/overview` returns 404.
+
+**[workers]** `test/rows-read.spec.ts`: `/api/overview` on its seed reads at most the seeded `profiles` + `subscribers` + `user_links` rows + in-window `app_events` + 5.
+
+**[static]** `test/static/home-page.spec.ts`:
+- `prefillQuestion("?q=Signups%20by%20month", fake)` sets `fake.value` to "Signups by month"; a 600-character `q` is cut to 500; no `q`, or an empty one, leaves `value` unchanged. The fake textarea and its fake `form` record any `submit`, `requestSubmit`, `click` or `dispatchEvent` call, and none happen; a stubbed global `fetch` is never called.
+- `assistant.js` imports `prefillQuestion` from `/prefill.js` and calls it with `location.search` and the `#question` textarea, and `prefill.js` contains no `fetch`, `postJson`, `submit`, `requestSubmit`, `click(` or `dispatchEvent`.
+- `index.html` has the four tiles, the three Start here links (`/lookup`, `/segments`, `/assistant`), four `/assistant?q=` links whose decoded `q` values are the four questions above, and a "Last import" heading after them with `#run-at` and `#report`.
+- `home.js` fetches `/api/overview` and `/api/import-report`, and has a label for every metric key written in `src/import/build.ts`.
+- Each of the four pages has exactly one `aria-current="page"`, on its own nav link.
+- No HTML file in `public/` has a `style=` attribute, an inline `<script>` without `src`, or a `<style>` tag. `style.css` and `login.css` have no `@import`, `url(http` or `@font-face`, and declare a `system-ui` font stack.
+
 ## Phases
 
 Each phase runs autonomously under `/goal`. A Sonnet builder subagent writes the code and tests, and an Opus verifier subagent checks the phase against the SPEC sections listed. Phases run in order and a phase starts only when the previous one is done.
@@ -470,6 +534,17 @@ The transcript must show all five:
   - `/pre-audit` lists no fix that has neither been applied nor documented.
 - **Live check:**
   - One full pass of all three pages and a live webhook send, on the deployed URL after the final CI deploy.
+
+### Phase 6: Home page and visual refresh (Oct 18)
+- **Scope:** §9 in full, the home page in the README feature list, and a DECISIONS.md row for the home page.
+- **Tests:**
+  - [workers] `test/overview.spec.ts` and the overview case in `test/rows-read.spec.ts`
+  - [static] `test/static/home-page.spec.ts`
+  - `npm run perf` lists `overview` under 10,000 rows read.
+- **Live check:**
+  - `GET /api/overview` without a cookie returns 401.
+  - Signed in, `/` shows four tiles with numbers, three Start here cards, four Try asking links and the Last import table.
+  - A Try asking link opens `/assistant` with the question filled in, and nothing is sent until Ask is pressed.
 
 ## Out of scope
 - CSV upload endpoint (the import is a script).
