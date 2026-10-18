@@ -224,10 +224,12 @@ describe("assistant tools stay within the read budget", () => {
 			}
 		});
 
-		it(`top_pages (all and first_visit) with ${label}`, async () => {
+		it(`top_pages (all and first_visit, with and without site pages) with ${label}`, async () => {
 			for (const mode of ["all", "first_visit"]) {
-				const { rows } = await runRecorded("top_pages", { filters, mode, limit: 20 });
-				expect(rows, mode).toBeLessThanOrEqual(BUDGET_FACTOR * seeded);
+				for (const include_site_pages of [false, true]) {
+					const { rows } = await runRecorded("top_pages", { filters, mode, limit: 20, include_site_pages });
+					expect(rows, `${mode} include_site_pages ${include_site_pages}`).toBeLessThanOrEqual(BUDGET_FACTOR * seeded);
+				}
 			}
 		});
 
@@ -255,6 +257,12 @@ describe("assistant tools stay within the read budget", () => {
 		]);
 		expect((await runRecorded("top_pages", { mode: "first_visit", limit: 20 })).result.rows).toEqual([{ page: "/news/0", profiles: 1500 }]);
 		expect((await runRecorded("top_pages", { mode: "all", limit: 20 })).result.rows).toEqual([
+			{ page: "/news/0", profiles: 1500 },
+			{ page: "/news/1", profiles: 1500 },
+		]);
+		// No seeded page is a site page, so including them changes nothing.
+		expect((await runRecorded("top_pages", { mode: "first_visit", limit: 20, include_site_pages: true })).result.rows).toEqual([{ page: "/news/0", profiles: 1500 }]);
+		expect((await runRecorded("top_pages", { mode: "all", limit: 20, include_site_pages: true })).result.rows).toEqual([
 			{ page: "/news/0", profiles: 1500 },
 			{ page: "/news/1", profiles: 1500 },
 		]);

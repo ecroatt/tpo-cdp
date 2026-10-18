@@ -15,6 +15,9 @@ export const PAGE_B = "/news/bravo-census";
 export const PAGE_C = "/news/charlie-census";
 export const PAGE_D = "/news/delta-census";
 export const PAGE_E = "/news/echo-census";
+export const PAGE_F = "/news/foxtrot-census";
+/** A content page that is not a site page, named in the spec. */
+export const PICKS = "/shadrachs-picks";
 
 export interface SubSeed {
 	k: number;
@@ -56,6 +59,8 @@ const VISITORS: [string, number][] = [
 	["v_1a2b3c4d01", 2],
 	["v_1a2b3c4d02", 2],
 	["v_1a2b3c4d03", 1],
+	["v_1a2b3c4d04", 4],
+	["v_1a2b3c4d08", 8],
 	["v_1a2b3c4d10", 10],
 	["v_1a2b3c4d11", 11],
 ];
@@ -68,6 +73,21 @@ const VISITS: [string, string, string][] = [
 	["v_1a2b3c4d01", PAGE_C, "2026-09-06T10:00:00Z"],
 	["v_1a2b3c4d02", PAGE_A, "2026-08-20T09:00:00Z"],
 	["v_1a2b3c4d03", PAGE_D, "2026-07-01T08:00:00Z"],
+	// Profiles 1, 4 and 8 are the brief's Q1 set (Instagram, signed up in August, cold). Every visit below is before 2026-08-29,
+	// outside the 30-day window, so engagement scores and min_site_visits are unchanged.
+	// Profile 1: earliest visit is the home page; its first content page is PAGE_D (07-01), before /shadrachs-picks (08-10).
+	["v_1a2b3c4d03", "/", "2026-06-15T08:00:00Z"],
+	["v_1a2b3c4d03", "/about", "2026-06-16T08:00:00Z"],
+	["v_1a2b3c4d03", PICKS, "2026-08-10T08:00:00Z"],
+	// Profile 4: the home page twice (counted once per profile); first content page is /shadrachs-picks.
+	["v_1a2b3c4d04", "/", "2026-08-20T09:00:00Z"],
+	["v_1a2b3c4d04", PICKS, "2026-08-21T09:00:00Z"],
+	["v_1a2b3c4d04", "/", "2026-08-23T09:00:00Z"],
+	["v_1a2b3c4d04", "/subscribe", "2026-08-24T09:00:00Z"],
+	// Profile 8: earliest visit is /subscribe; first content page is PAGE_F (08-19).
+	["v_1a2b3c4d08", "/subscribe", "2026-08-18T09:00:00Z"],
+	["v_1a2b3c4d08", PAGE_F, "2026-08-19T09:00:00Z"],
+	["v_1a2b3c4d08", PICKS, "2026-08-25T09:00:00Z"],
 	["v_1a2b3c4d10", PAGE_A, "2026-08-25T09:00:00Z"],
 	["v_1a2b3c4d10", PAGE_B, "2026-09-03T09:00:00Z"],
 	["v_1a2b3c4d11", PAGE_B, "2026-09-11T09:00:00Z"],
@@ -216,6 +236,8 @@ export const Q2 = {
 	question: "Build me a list of our most engaged readers",
 	reply: { name: "engagement_ranking", input: { limit: 50 } },
 };
+/** The Q1 filters, which match profiles 1, 4 and 8. */
+export const Q1_FILTERS = { sources: ["instagram"], signup_from: "2026-08-01", signup_to: "2026-08-31", cold: true };
 export const Q3 = {
 	question: "Which pages do new subscribers hit first?",
 	reply: { name: "top_pages", input: { filters: { signup_from: "2026-08-29" }, mode: "first_visit" } },
