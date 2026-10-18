@@ -284,3 +284,15 @@ describe("assistant tools stay within the read budget", () => {
 		]);
 	});
 });
+
+describe("the home page tiles stay within the read budget", () => {
+	it("/api/overview reads at most the seeded profiles + subscribers + user_links rows + in-window app_events + 5", async () => {
+		// Seed: 1,500 profiles, 1,500 subscribers, 300 user_links. In-window events (ts >= 2026-08-29): every
+		// event except the first event of the 150 odd users, which is dated 2026-07-15.
+		const inWindowEvents = APP_EVENTS_SEEDED - APP_USERS / 2;
+		const { status, rows, body } = await rowsReadBy("/api/overview");
+		expect(status).toBe(200);
+		expect(body).toEqual({ people: PROFILES, active_subscribers: PROFILES, app_users_linked: APP_USERS, app_events_30d: inWindowEvents });
+		expect(rows).toBeLessThanOrEqual(PROFILES + PROFILES + APP_USERS + inWindowEvents + 5);
+	});
+});
