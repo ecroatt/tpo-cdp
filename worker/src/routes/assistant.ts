@@ -5,6 +5,7 @@ import { hasDisguisedEmail, scrubQuestion } from "../assistant/scrub";
 import { answerFor } from "../assistant/templates";
 import { runTool, validatePlan } from "../assistant/tools";
 import { json } from "../http/security";
+import { clientKey, type Limiter } from "../lib/limiter";
 
 const QUESTION_MAX = 500;
 
@@ -23,6 +24,12 @@ export interface AssistantDeps {
  * back as `model_request`. An invalid plan gets 422 and no SQL runs.
  */
 export async function handleAssistant(request: Request, env: Env, deps: AssistantDeps = {}): Promise<Response> {
+	// 20 questions per 60 s per IP, checked before anything else.
+	const limiter = env.ASSISTANT_LIMITER as Limiter;
+	if (!(await limiter.limit({ key: clientKey(request) })).success) {
+		return json({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+	}
+
 	let payload: unknown;
 	try {
 		payload = await request.json();

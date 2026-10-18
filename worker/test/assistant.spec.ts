@@ -63,10 +63,13 @@ const DISGUISED_EMAILS: [string, string][] = [
 	["fullwidth @", "jane\uFF20gmail.com"],
 ];
 
+/** The real ASSISTANT_LIMITER would count every direct call under one key, so the direct calls use one that always allows. */
+const openEnv = { ...env, ASSISTANT_LIMITER: { limit: async () => ({ success: true }) } } as Env;
+
 /** The other tests run without the name check; the "name check" tests below use the real one. */
 const deps = (model: { fetch: typeof fetch }) => ({ fetch: model.fetch, names: async () => false });
 
-async function ask(question: unknown, reply: Parameters<typeof scriptedModel>[0], testEnv: Env = env) {
+async function ask(question: unknown, reply: Parameters<typeof scriptedModel>[0], testEnv: Env = openEnv) {
 	const model = scriptedModel(reply);
 	const response = await handleAssistant(askRequest(question), testEnv, deps(model));
 	return { model, response, json: (await response.json()) as any };
@@ -678,7 +681,7 @@ describe("disguised emails are blocked, not sent", () => {
 	it("with a scrubber that misses them, all of them are still blocked by the guard in sendToModel (422, no fetch)", async () => {
 		for (const [label, text] of DISGUISED_EMAILS) {
 			const model = scriptedModel(Q1.reply);
-			const response = await handleAssistant(askRequest(`is ${text} one of them?`), env, { fetch: model.fetch, scrub: (q: string) => q });
+			const response = await handleAssistant(askRequest(`is ${text} one of them?`), openEnv, { fetch: model.fetch, scrub: (q: string) => q });
 			expect(response.status, label).toBe(422);
 			expect(await response.json(), label).toEqual({ error: "blocked_pii" });
 			expect(model.calls, label).toHaveLength(0);
@@ -761,7 +764,7 @@ describe("assistant rate limit", () => {
 describe("name check", () => {
 	const askReal = async (question: string) => {
 		const model = scriptedModel(Q1.reply);
-		const response = await handleAssistant(askRequest(question), env, { fetch: model.fetch });
+		const response = await handleAssistant(askRequest(question), openEnv, { fetch: model.fetch });
 		return { model, response };
 	};
 
@@ -836,13 +839,13 @@ describe("name check", () => {
 		const question = words.join(" ");
 		expect(question.length).toBeLessThanOrEqual(500);
 		const model = scriptedModel(Q1.reply);
-		const response = await handleAssistant(askRequest(question), { ...env, tpo_cdp: watched } as Env, { fetch: model.fetch });
+		const response = await handleAssistant(askRequest(question), { ...openEnv, tpo_cdp: watched } as Env, { fetch: model.fetch });
 		expect(response.status).toBe(200);
 		expect(sizes.length).toBeGreaterThan(0);
 		expect(Math.max(...sizes)).toBeLessThanOrEqual(100);
 		// The same long question with a name in the middle is still found.
 		const withName = [...words.slice(0, 70), "julia", "evans", ...words.slice(70, 100)].join(" ");
-		const blocked = await handleAssistant(askRequest(withName), { ...env, tpo_cdp: watched } as Env, { fetch: model.fetch });
+		const blocked = await handleAssistant(askRequest(withName), { ...openEnv, tpo_cdp: watched } as Env, { fetch: model.fetch });
 		expect(blocked.status).toBe(422);
 	});
 });
@@ -906,7 +909,7 @@ describe("question validation", () => {
 	it("a missing, empty, non-string or over-long question gets 400 and no model call", async () => {
 		for (const question of [undefined, "", "   ", 42, null, ["a"], "q".repeat(501)]) {
 			const model = scriptedModel(Q1.reply);
-			const response = await handleAssistant(askRequest(question), env, deps(model));
+			const response = await handleAssistant(askRequest(question), openEnv, deps(model));
 			expect(response.status, String(question)).toBe(400);
 			expect(await response.json()).toEqual({ error: "invalid_question" });
 			expect(model.calls).toHaveLength(0);
@@ -916,7 +919,7 @@ describe("question validation", () => {
 	it("a body that is not JSON gets 400", async () => {
 		const model = scriptedModel(Q1.reply);
 		const request = new Request(BASE + "/api/assistant", { method: "POST", headers: { "Content-Type": "application/json", Origin: BASE }, body: "not json" });
-		const response = await handleAssistant(request, env, deps(model));
+		const response = await handleAssistant(request, openEnv, deps(model));
 		expect(response.status).toBe(400);
 		expect(model.calls).toHaveLength(0);
 	});

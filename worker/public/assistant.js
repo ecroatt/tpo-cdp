@@ -11,6 +11,7 @@ const results = document.getElementById("results");
 
 const ERRORS = {
 	400: "Please type a question of up to 500 characters.",
+	429: "Too many questions. Wait a minute and try again.",
 	422: "I could not turn that into a question about the audience. Try rephrasing it.",
 	502: "The assistant is unavailable right now. Please try again in a moment.",
 };

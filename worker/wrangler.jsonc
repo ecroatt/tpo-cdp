@@ -30,6 +30,11 @@
 			"name": "WEBHOOK_LIMITER",
 			"namespace_id": "1002",
 			"simple": { "limit": 120, "period": 60 }
+		},
+		{
+			"name": "ASSISTANT_LIMITER",
+			"namespace_id": "1003",
+			"simple": { "limit": 20, "period": 60 }
 		}
 	],
 	"d1_databases": [

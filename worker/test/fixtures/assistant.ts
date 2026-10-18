@@ -229,7 +229,7 @@ export function noSqlEnv(): { env: Env; touched: string[] } {
 		throw new Error("no SQL expected");
 	};
 	const db = { prepare: trap("prepare"), batch: trap("batch"), exec: trap("exec"), withSession: trap("withSession"), dump: trap("dump") };
-	return { env: { ...env, tpo_cdp: db as unknown as D1Database } as Env, touched };
+	return { env: { ...env, tpo_cdp: db as unknown as D1Database, ASSISTANT_LIMITER: { limit: async () => ({ success: true }) } } as Env, touched };
 }
 
 export function askRequest(question: unknown): Request {
