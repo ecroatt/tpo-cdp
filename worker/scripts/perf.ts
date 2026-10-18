@@ -128,12 +128,12 @@ async function main(): Promise<void> {
 		};
 
 		await call("session gate only (404 route)", "/api/nothing-here", undefined, 404);
-		await call("lookup by email", "/api/lookup?q=" + encodeURIComponent(lookupQ));
+		await call("lookup by email", "/api/lookup", { q: lookupQ });
 		await call("preview: instagram, not opened 30d", "/api/segments/preview", {
 			filters: { sources: ["instagram"], not_opened_days: 30 },
 		});
 		await call("preview: no filters", "/api/segments/preview", { filters: {} });
-		await call("lookup: profile with app activity", "/api/lookup?q=" + busiest.profile_id);
+		await call("lookup: profile with app activity", "/api/lookup", { q: busiest.profile_id });
 		await call("preview: app_active_days 30", "/api/segments/preview", { filters: { app_active_days: 30 } });
 		await call("preview: app_active_days 90", "/api/segments/preview", { filters: { app_active_days: 90 } });
 		await call("preview: app_active_days 30 + instagram", "/api/segments/preview", {

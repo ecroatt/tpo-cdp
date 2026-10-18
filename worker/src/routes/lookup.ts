@@ -117,10 +117,16 @@ async function profileView(db: D1Database, profileId: string): Promise<Response>
 	});
 }
 
-/** GET /api/lookup?q=. Nothing is cached, so new events show up on the next request. */
-export async function handleLookup(env: Env, url: URL): Promise<Response> {
-	const q = url.searchParams.get("q") ?? "";
-	if (q === "" || q.length > MAX_QUERY_LENGTH) return json({ error: "not_found" }, 404);
+/** POST /api/lookup {q}. Nothing is cached, so new events show up on the next request. */
+export async function handleLookup(request: Request, env: Env): Promise<Response> {
+	let payload: unknown;
+	try {
+		payload = await request.json();
+	} catch {
+		return json({ error: "invalid_request" }, 400);
+	}
+	const q = typeof payload === "object" && payload !== null ? (payload as { q?: unknown }).q : undefined;
+	if (typeof q !== "string" || q === "" || q.length > MAX_QUERY_LENGTH) return json({ error: "not_found" }, 404);
 	const found = await resolve(env.tpo_cdp, q);
 	if (found === null) return json({ error: "not_found" }, 404);
 	return found.type === "profile" ? profileView(env.tpo_cdp, found.profileId) : anonymousVisitor(env.tpo_cdp, found.visitorId);

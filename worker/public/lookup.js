@@ -1,4 +1,4 @@
-import { card, clear, el, getJson, table } from "/api.js";
+import { card, clear, el, postJson, table } from "/api.js";
 
 const form = document.getElementById("search");
 const input = document.getElementById("q");
@@ -79,7 +79,7 @@ function renderAnonymous(p) {
 async function search(q) {
 	clear(results);
 	status.textContent = "Searching...";
-	const { status: code, body } = await getJson(`/api/lookup?q=${encodeURIComponent(q)}`);
+	const { status: code, body } = await postJson("/api/lookup", { q });
 	if (code === 404) {
 		status.textContent = "No exact match. Try the full email, a profile ID, a user ID or a visitor ID.";
 		return;
