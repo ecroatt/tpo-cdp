@@ -42,7 +42,7 @@ export function answerFor(result: ToolResult): string {
 		}
 		case "top_pages": {
 			const { filters, mode, include_site_pages } = params as { filters: Filters; mode: "all" | "first_visit"; include_site_pages: boolean };
-				const leftOut = include_site_pages ? "" : ` Leaves out site pages: ${SITE_PAGES.join(", ")}.`;
+			const leftOut = include_site_pages ? "" : " Leaves out site pages: " + SITE_PAGES.join(", ") + ".";
 			const desc = describeFilters(filters);
 			if (rows.length === 0) return `No pages found for profiles matching ${desc}.${leftOut}`;
 			const list = (rows as { page: string; profiles: number }[]).map((r) => `${r.page} (${r.profiles})`).join(", ");

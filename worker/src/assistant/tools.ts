@@ -177,7 +177,7 @@ async function breakdown(db: D1Database, by: BreakdownField, filters: Filters): 
 async function topPages(db: D1Database, filters: Filters, mode: PagesMode, limit: number, includeSitePages: boolean): Promise<ToolResult> {
 	const where = buildWhere(filters);
 	// Site-page visits are dropped before grouping or MIN, by exact match on bound values.
-	const skip = includeSitePages ? "" : ` WHERE w.page NOT IN (${SITE_PAGES.map(() => "?").join(", ")})`;
+	const skipSitePages = includeSitePages ? "" : " WHERE w.page NOT IN (" + SITE_PAGES.map(() => "?").join(", ") + ")";
 	const skipBinds = includeSitePages ? [] : SITE_PAGES;
 	const statement =
 		mode === "all"
@@ -185,14 +185,14 @@ async function topPages(db: D1Database, filters: Filters, mode: PagesMode, limit
 					`WITH m AS (SELECT p.profile_id AS profile_id FROM profiles p LEFT JOIN subscribers s ON s.email_norm = p.email_norm WHERE ${where.sql})
 					SELECT w.page AS page, COUNT(DISTINCT vl.profile_id) AS profiles
 					FROM m JOIN visitor_links vl ON vl.profile_id = m.profile_id JOIN web_events w ON w.visitor_id = vl.visitor_id
-					${skip}
+					${skipSitePages}
 						GROUP BY w.page ORDER BY profiles DESC, w.page ASC LIMIT ?`,
 				)
 			: db.prepare(
 					`WITH m AS (SELECT p.profile_id AS profile_id FROM profiles p LEFT JOIN subscribers s ON s.email_norm = p.email_norm WHERE ${where.sql}),
 					f AS (SELECT MIN(w.ts || '|' || w.page) AS k
 						FROM m JOIN visitor_links vl ON vl.profile_id = m.profile_id JOIN web_events w ON w.visitor_id = vl.visitor_id
-						${skip}
+						${skipSitePages}
 						GROUP BY vl.profile_id)
 					SELECT substr(k, instr(k, '|') + 1) AS page, COUNT(*) AS profiles FROM f GROUP BY page ORDER BY profiles DESC, page ASC LIMIT ?`,
 				);
