@@ -105,13 +105,12 @@ describe("buildModelRequest", () => {
 	});
 
 	it("never calls a content page a site page, and the include_site_pages wording names exactly SITE_PAGES", () => {
-		for (const line of body.system.split("
-")) {
-			if (/site pages?/i.test(line)) {
+		for (const line of body.system.split("\n")) {
+			if (/site pages?\b/i.test(line)) {
 				for (const page of ["/beliefs", "/our-staff", "/shadrachs-picks"]) expect(line.includes(page), line).toBe(false);
 			}
 		}
-		const named = /Site pages are exactly: (.*?) (/.exec(body.system);
+		const named = /Site pages are exactly: (.*?) \(/.exec(body.system);
 		expect(named).not.toBeNull();
 		expect(named![1].split(", ")).toEqual(SITE_PAGES);
 		expect(body.system).toContain("Pages on the site: ");
