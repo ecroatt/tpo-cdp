@@ -36,6 +36,8 @@ data/           put the three assessment CSVs here (gitignored)
 
 You need Node 24 and git. Nothing here touches a remote Cloudflare account.
 
+On Windows, clone to a short path such as `C:\code\tpo-cdp`. Wrangler keeps local rate-limiter state about 140 characters below the repo folder, and past Windows' 260-character path limit, login and the webhook fail with a 500.
+
 1. Clone the repo and install:
    ```sh
    git clone https://github.com/ecroatt/tpo-cdp.git
@@ -58,7 +60,7 @@ You need Node 24 and git. Nothing here touches a remote Cloudflare account.
    npm run import -- --local
    ```
 5. Run the tests: `npm test`.
-6. Start the app: `npm run dev`, open http://localhost:8787 and sign in with your `UI_PASSWORD`.
+6. Start the app: `npm run dev`, open http://localhost:8787 and sign in with your `UI_PASSWORD`. If port 8787 is already in use, wrangler picks the next free port; use the URL it prints ("Ready on …") here and in step 7.
 7. In a second terminal (also in `worker/`), send a signed scenario of app events to your local webhook. Use the same `WEBHOOK_SECRET` as in `.dev.vars`:
    ```sh
    WEBHOOK_URL=http://localhost:8787/webhooks/app WEBHOOK_SECRET=<your secret> npm run send-events
