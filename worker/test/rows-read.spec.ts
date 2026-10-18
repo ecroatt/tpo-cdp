@@ -159,6 +159,17 @@ describe("D1 rows read stay linear in the data", () => {
 		expect(rows).toBeLessThanOrEqual(LOOKUP_FACTOR * (1 + VISITS_PER_VISITOR + 1 + 1 + OWN_EVENTS) + LOOKUP_OVERHEAD);
 	});
 
+	it("the assistant's name check reads at most 10 rows for a question with no names", async () => {
+		// Each adjacent word pair is an indexed range on profiles.email_norm that matches nothing here, so it reads
+		// no profile rows; a scan of the 1,500 profiles would fail this by a wide margin.
+		const { questionNamesSomeone } = await import("../src/assistant/names");
+		const recorder = recordRowsRead(env.tpo_cdp);
+		const found = await questionNamesSomeone(recorder.db, "how many instagram signups are cold in the last month and which pages did they read first?");
+		expect(found).toBe(false);
+		expect(recorder.statements()).toBeGreaterThan(0);
+		expect(recorder.rowsRead()).toBeLessThanOrEqual(10);
+	});
+
 	it("preview with no filters", async () => {
 		const { status, rows } = await rowsReadBy("/api/segments/preview", { filters: {} });
 		expect(status).toBe(200);

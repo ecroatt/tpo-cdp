@@ -35,7 +35,7 @@ import {
 	SITE_ONLY_FILTERS,
 	SUBS,
 } from "./fixtures/assistant";
-import { call, loginCookie, postJson, resetAll } from "./fixtures/cdp";
+import { addProfile, call, loginCookie, postJson, resetAll } from "./fixtures/cdp";
 
 /** The sentence that ends a top_pages answer when site pages are left out, built from the one constant. */
 const LEAVES_OUT = ` Leaves out site pages: ${SITE_PAGES.join(", ")}.`;
@@ -55,7 +55,8 @@ const DISGUISED_EMAILS: [string, string][] = [
 	["fullwidth @", "jane\uFF20gmail.com"],
 ];
 
-const deps = (model: { fetch: typeof fetch }) => ({ fetch: model.fetch });
+/** The other tests run without the name check; the "name check" tests below use the real one. */
+const deps = (model: { fetch: typeof fetch }) => ({ fetch: model.fetch, names: async () => false });
 
 async function ask(question: unknown, reply: Parameters<typeof scriptedModel>[0], testEnv: Env = env) {
 	const model = scriptedModel(reply);
@@ -671,6 +672,95 @@ describe("disguised emails are blocked, not sent", () => {
 			expect(response.status, q).toBe(200);
 			expect(model.calls, q).toHaveLength(1);
 		}
+	});
+});
+
+describe("name check", () => {
+	const askReal = async (question: string) => {
+		const model = scriptedModel(Q1.reply);
+		const response = await handleAssistant(askRequest(question), env, { fetch: model.fetch });
+		return { model, response };
+	};
+
+	beforeEach(async () => {
+		await addProfile("p_julia", "subscriber", "julia.evans230@example.com");
+		await addProfile("p_max", "subscriber", "max_power7@example.com");
+		await addProfile("p_lena", "subscriber", "lenafox@example.com");
+		await addProfile("p_rita", "subscriber", "rita.stone@example.com");
+	});
+
+	it("a first and last name from a stored email gets 422 blocked_pii and no fetch call", async () => {
+		for (const question of ["is Julia Evans active?", "how engaged is julia evans", "Max Power?", "did lena fox sign up", "what about Rita Stone"]) {
+			const { model, response } = await askReal(question);
+			expect(response.status, question).toBe(422);
+			expect(await response.json(), question).toEqual({ error: "blocked_pii" });
+			expect(model.calls, question).toHaveLength(0);
+		}
+	});
+
+	it("matches the name only when it is followed by a digit or the @, and only for adjacent words", async () => {
+		for (const question of ["is julia evanston active?", "is julia really evans active?", "is evans julia active?", "how engaged is julia", "rita stones"]) {
+			const { model, response } = await askReal(question);
+			expect(response.status, question).toBe(200);
+			expect(model.calls, question).toHaveLength(1);
+		}
+	});
+
+	it("a question with no name is not blocked and makes one fetch call", async () => {
+		const { model, response } = await askReal("how many instagram signups are cold?");
+		expect(response.status).toBe(200);
+		expect(model.calls).toHaveLength(1);
+	});
+
+	it("runs after the scrub and before the model, so a blocked question never reaches sendToModel", async () => {
+		const { env: guarded, touched } = noSqlEnv();
+		const model = scriptedModel(Q1.reply);
+		const names = async () => true;
+		const response = await handleAssistant(askRequest("anything at all"), guarded, { fetch: model.fetch, names });
+		expect(response.status).toBe(422);
+		expect(await response.json()).toEqual({ error: "blocked_pii" });
+		expect(model.calls).toHaveLength(0);
+		expect(touched).toEqual([]);
+	});
+
+	it("keeps every statement under D1's 100 bound parameters, even for a 150-word question", async () => {
+		const sizes: number[] = [];
+		const watched = new Proxy(env.tpo_cdp, {
+			get(target, prop) {
+				if (prop === "prepare") {
+					return (sql: string) => {
+						const statement = target.prepare(sql);
+						return new Proxy(statement, {
+							get(inner, key) {
+								if (key === "bind") {
+									return (...values: unknown[]) => {
+										sizes.push(values.length);
+										return inner.bind(...values);
+									};
+								}
+								const value = Reflect.get(inner, key);
+								return typeof value === "function" ? value.bind(inner) : value;
+							},
+						});
+					};
+				}
+				const value = Reflect.get(target, prop);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
+		const letters = "abcdefghijklmnopqrstuvwxyz";
+		const words = Array.from({ length: 150 }, (_, i) => letters[Math.floor(i / 26)] + letters[i % 26] + "q");
+		const question = words.join(" ");
+		expect(question.length).toBeLessThanOrEqual(500);
+		const model = scriptedModel(Q1.reply);
+		const response = await handleAssistant(askRequest(question), { ...env, tpo_cdp: watched } as Env, { fetch: model.fetch });
+		expect(response.status).toBe(200);
+		expect(sizes.length).toBeGreaterThan(1);
+		expect(Math.max(...sizes)).toBeLessThanOrEqual(100);
+		// The same long question with a name in the middle is still found.
+		const withName = [...words.slice(0, 70), "julia", "evans", ...words.slice(70, 100)].join(" ");
+		const blocked = await handleAssistant(askRequest(withName), { ...env, tpo_cdp: watched } as Env, { fetch: model.fetch });
+		expect(blocked.status).toBe(422);
 	});
 });
 
