@@ -173,8 +173,11 @@ async function main(): Promise<void> {
 		for (const [name, filters] of filterSets) {
 			await tool(`count_profiles: ${name}`, "count_profiles", { filters });
 			await tool(`build_segment: ${name}`, "build_segment", { filters });
-			await tool(`top_pages all: ${name}`, "top_pages", { filters, mode: "all", limit: 20 });
-			await tool(`top_pages first_visit: ${name}`, "top_pages", { filters, mode: "first_visit", limit: 20 });
+			for (const include_site_pages of [false, true]) {
+				const suffix = include_site_pages ? " +site pages" : "";
+				await tool(`top_pages all${suffix}: ${name}`, "top_pages", { filters, mode: "all", limit: 20, include_site_pages });
+				await tool(`top_pages first_visit${suffix}: ${name}`, "top_pages", { filters, mode: "first_visit", limit: 20, include_site_pages });
+			}
 			for (const by of ["source", "status", "signup_month", "kind", "cold"]) await tool(`breakdown by ${by}: ${name}`, "breakdown", { by, filters });
 			await tool(`engagement_ranking 50: ${name}`, "engagement_ranking", { limit: 50, filters });
 		}
