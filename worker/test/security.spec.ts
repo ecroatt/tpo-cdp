@@ -184,6 +184,76 @@ describe("login and session", () => {
 	});
 });
 
+describe("body size caps", () => {
+	const jsonInit = (cookie: string, body: BodyInit, extra: HeadersInit = {}): RequestInit => ({
+		method: "POST",
+		headers: { "Content-Type": "application/json", Origin: BASE, Cookie: cookie, ...extra },
+		body,
+	});
+
+	it("POST /login over 4 KB gets 413, and one under 4 KB is still read as a login", async () => {
+		const big = await call("/login", loginRequest("p".repeat(5 * 1024), "198.51.100.31"));
+		expect(big.status).toBe(413);
+		expect(big.headers.get("Set-Cookie")).toBeNull();
+		const small = await call("/login", loginRequest("p".repeat(3 * 1024), "198.51.100.32"));
+		expect(small.status).toBe(401);
+	});
+
+	it("POST /login 413 holds for a streamed body with no Content-Length", async () => {
+		const chunk = new TextEncoder().encode("password=" + "p".repeat(1024) + "&");
+		const stream = new ReadableStream({
+			start(controller) {
+				for (let i = 0; i < 6; i++) controller.enqueue(chunk);
+				controller.close();
+			},
+		});
+		const response = await call("/login", {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "198.51.100.33" },
+			body: stream,
+			duplex: "half",
+		} as RequestInit);
+		expect(response.status).toBe(413);
+	});
+
+	it("a JSON /api POST over 8 KB gets 413 payload_too_large before the body is parsed", async () => {
+		const cookie = await login("198.51.100.34");
+		const big = JSON.stringify({ question: "x", pad: "y".repeat(9 * 1024) });
+		for (const path of ["/api/assistant", "/api/lookup", "/api/segments/preview"]) {
+			const response = await call(path, jsonInit(cookie, big));
+			expect(response.status, path).toBe(413);
+			expect(await response.json(), path).toEqual({ error: "payload_too_large" });
+		}
+		// Not JSON at all: still 413, not 400, because the size is checked first.
+		const junk = await call("/api/assistant", jsonInit(cookie, "{".repeat(9 * 1024)));
+		expect(junk.status).toBe(413);
+	});
+
+	it("a JSON /api POST over 8 KB gets 413 when it arrives as a stream with no Content-Length", async () => {
+		const cookie = await login("198.51.100.35");
+		const chunk = new TextEncoder().encode("a".repeat(1024));
+		const stream = new ReadableStream({
+			start(controller) {
+				for (let i = 0; i < 10; i++) controller.enqueue(chunk);
+				controller.close();
+			},
+		});
+		const response = await call("/api/lookup", { ...jsonInit(cookie, stream), duplex: "half" } as RequestInit);
+		expect(response.status).toBe(413);
+	});
+
+	it("a JSON /api POST of exactly 8 KB is still handled", async () => {
+		const cookie = await login("198.51.100.36");
+		const head = '{"q":"nobody","pad":"';
+		const tail = '"}';
+		const body = head + "y".repeat(8192 - head.length - tail.length) + tail;
+		expect(new TextEncoder().encode(body).length).toBe(8192);
+		const response = await call("/api/lookup", jsonInit(cookie, body));
+		expect(response.status).toBe(404);
+		expect(await response.json()).toEqual({ error: "not_found" });
+	});
+});
+
 describe("requests and headers", () => {
 	it("a state-changing /api request with a foreign Origin gets 403 (CSRF helper)", async () => {
 		const bad = new Request(BASE + "/api/segments", {
