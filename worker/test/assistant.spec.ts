@@ -50,6 +50,13 @@ const DISGUISED_EMAILS: [string, string][] = [
 	["percent-encoded @", "jane%40gmail.com"],
 	["html entity @", "jane&#64;gmail.com"],
 	["literal backslash-u0040", "jane\\u0040gmail.com"],
+	["entity without the semicolon", "jane&#64gmail.com"],
+	["hex entity without the semicolon", "jane&#x40gmail.com"],
+	["curly brackets", "jane{at}gmail{dot}com"],
+	["angle brackets", "jane<at>gmail<dot>com"],
+	["round brackets with spaces", "jane ( at ) gmail ( dot ) com"],
+	["at followed by a dotted domain", "jane at gmail.com"],
+	["soft hyphen inside an address", "ja­ne@gmail.com"],
 	["a typed email", "jane@gmail.com"],
 	["zero-width characters", "ja\u200Bne@gmail.com"],
 	["fullwidth @", "jane\uFF20gmail.com"],
@@ -99,6 +106,26 @@ describe("scrubQuestion", () => {
 		for (const zw of ["\u200B", "\u200C", "\u200D", "\u2060", "\uFEFF"]) {
 			expect(scrubQuestion(`who is ja${zw}ne@gmail.com?`), JSON.stringify(zw)).toBe("who is [email]?");
 		}
+	});
+
+	it("strips every format and default-ignorable character before matching, such as a soft hyphen", () => {
+		for (const hidden of ["­", "᠎", "⁤", "‮", "️", "\u{E0041}"]) {
+			expect(scrubQuestion(`who is ja${hidden}ne@gmail.com?`), JSON.stringify(hidden)).toBe("who is [email]?");
+		}
+	});
+
+	it("replaces a 32-hex profile id glued to letters, in either case", () => {
+		expect(scrubQuestion(`x${pid(11)}g`)).toBe("x[id]g");
+		expect(scrubQuestion(`id ${pid(11).toUpperCase()}.`)).toBe("id [id].");
+		// 33 hex digits are not a 32-hex id.
+		expect(scrubQuestion(`a${pid(11)}`)).toBe(`a${pid(11)}`);
+	});
+
+	it("replaces an email with non-ASCII letters whole, leaving no fragment", () => {
+		expect(scrubQuestion("jöhn@example.com")).toBe("[email]");
+		expect(scrubQuestion("a@exämple.com")).toBe("[email]");
+		expect(scrubQuestion("who is jöhn@exämple.com?")).toBe("who is [email]?");
+		expect(scrubQuestion("who is jöhn@example.com?")).toBe("who is [email]?");
 	});
 
 	it("keeps scrubbing the same text the same way on every call (no regex state)", () => {
@@ -636,7 +663,7 @@ describe("PII never reaches the model", () => {
 
 describe("disguised emails are blocked, not sent", () => {
 	it("each evasive form gets 422 blocked_pii through the route, with no fetch call and no SQL", async () => {
-		for (const [label, text] of DISGUISED_EMAILS.filter(([l]) => !["a typed email", "zero-width characters", "fullwidth @"].includes(l))) {
+		for (const [label, text] of DISGUISED_EMAILS.filter(([l]) => !["a typed email", "zero-width characters", "fullwidth @", "soft hyphen inside an address"].includes(l))) {
 			const model = scriptedModel(Q1.reply);
 			const { env: guarded, touched } = noSqlEnv();
 			const response = await handleAssistant(askRequest(`is ${text} one of them?`), guarded, { fetch: model.fetch });
@@ -658,7 +685,7 @@ describe("disguised emails are blocked, not sent", () => {
 	});
 
 	it("a zero-width or fullwidth email that scrubs cleanly is replaced, and the question goes on with one fetch call", async () => {
-		for (const text of ["ja\u200Bne@gmail.com", "jane\uFF20gmail.com"]) {
+		for (const text of ["ja\u200Bne@gmail.com", "jane\uFF20gmail.com", "ja\u00ADne@gmail.com"]) {
 			const { model, response } = await ask(`is ${text} one of them?`, Q1.reply);
 			expect(response.status).toBe(200);
 			expect(model.calls).toHaveLength(1);
@@ -667,7 +694,7 @@ describe("disguised emails are blocked, not sent", () => {
 	});
 
 	it("ordinary questions with 'at' or a handle-free sentence are not blocked", async () => {
-		for (const q of ["How many signed up at the start of the month?", "Which pages do people look at first?", Q1.question]) {
+		for (const q of ["How many signed up at the start of the month?", "Which pages do people look at first?", "how many instagram signups at the start of august", Q1.question]) {
 			const { model, response } = await ask(q, Q1.reply);
 			expect(response.status, q).toBe(200);
 			expect(model.calls, q).toHaveLength(1);
