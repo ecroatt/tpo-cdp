@@ -58,7 +58,7 @@ const ALLOWED_SQL_INTERPOLATIONS: Record<string, string[]> = {
 	"src/segments/filters.ts": ["marks(filters.sources.length)", "marks(filters.kind.length)"],
 	// previewSegment: the WHERE body from buildWhere and the constant SCORE_SQL. Nothing else.
 	"src/segments/query.ts": ["where.sql", "SCORE_SQL", "APP_POINTS_CTE"],
-	// The assistant tools: the WHERE body from buildWhere, and top_pages' site-page filter, which is only "?" placeholders
+	// The assistant tools: the WHERE body from buildWhere, and top_pages' site-page filter, which is only "w.page <> ?" comparisons
 	// (one per SITE_PAGES entry) or an empty string; the page values are binds.
 	"src/assistant/tools.ts": ["where.sql", "skipSitePages"],
 	// ownedActivity / ownedWindowPoints: two constants defined in the same file (string literals joined by +).
@@ -307,8 +307,8 @@ describe("source scans", () => {
 		expect(disallowedSqlInterpolations(tools, ALLOWED_SQL_INTERPOLATIONS["src/assistant/tools.ts"])).toEqual([]);
 		expect(tools).toContain("buildWhere(");
 		expect(tools).toContain("${where.sql}");
-		// The filter is "?" placeholders only, with the page values passed through bind.
-		expect(tools).toMatch(/SITE_PAGES\.map\(\(\) => "\?"\)\.join\(", "\)/);
+		// The filter is "w.page <> ?" comparisons only, with the page values passed through bind.
+		expect(tools).toMatch(/SITE_PAGES\.map\(\(\) => "w\.page <> \?"\)\.join\(" AND "\)/);
 		expect(tools).toContain("...skipBinds");
 		expect(badSqlPositions(tools, ALLOWED_SQL_INTERPOLATIONS["src/assistant/tools.ts"])).toEqual([]);
 	});
