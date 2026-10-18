@@ -28,7 +28,7 @@ Counted over the last 30 days (`worker/src/segments/engagement.ts`):
 | Signal | Points |
 | --- | --- |
 | Newsletter: last open in the last 7 days | 3 |
-| Newsletter: last open 8 to 30 days ago | 1 |
+| Newsletter: last open 7 to 30 days ago (in the last 30 days but not the last 7) | 1 |
 | Each linked site visit | 1 |
 | Each `read_story` app event | 2 |
 | Each other owned app event (`app_open`, `link_click`, `login`) | 1 |
