@@ -116,6 +116,10 @@ describe("SPEC 5 and 6 Assistant page", () => {
 		expect(js).toMatch(/getElementById\("model-request"\)\.textContent\s*=/);
 	});
 
+	it("shows a plain message for a 429 too many questions", () => {
+		expect(js).toMatch(/429:/);
+	});
+
 	it("shows a plain message for a blocked_pii answer that points to the Lookup page", () => {
 		expect(js).toMatch(/blocked_pii/);
 		expect(js).toMatch(/Lookup page/);

@@ -7,6 +7,7 @@ import { normalizeEmail } from "../src/lib/email";
 import { scrubQuestion } from "../src/assistant/scrub";
 import { answerFor } from "../src/assistant/templates";
 import { SITE_PAGES, validatePlan } from "../src/assistant/tools";
+import type { Limiter } from "../src/lib/limiter";
 import { handleAssistant } from "../src/routes/assistant";
 import {
 	ALL_EMAILS,
@@ -699,6 +700,61 @@ describe("disguised emails are blocked, not sent", () => {
 			expect(response.status, q).toBe(200);
 			expect(model.calls, q).toHaveLength(1);
 		}
+	});
+});
+
+describe("assistant rate limit", () => {
+	it("over the limit the route returns 429 rate_limited with Retry-After 60, before the scrub, the name check or the model", async () => {
+		const seen: string[] = [];
+		const deny: Limiter = {
+			limit: async ({ key }) => {
+				seen.push(key);
+				return { success: false };
+			},
+		};
+		const { env: guarded, touched } = noSqlEnv();
+		const model = scriptedModel(Q1.reply);
+		let nameChecks = 0;
+		let scrubs = 0;
+		const request = askRequest(Q1.question);
+		request.headers.set("CF-Connecting-IP", "203.0.113.77");
+		const response = await handleAssistant(request, { ...guarded, ASSISTANT_LIMITER: deny } as Env, {
+			fetch: model.fetch,
+			scrub: (q: string) => (scrubs++, q),
+			names: async () => (nameChecks++, false),
+		});
+		expect(response.status).toBe(429);
+		expect(response.headers.get("Retry-After")).toBe("60");
+		expect(await response.json()).toEqual({ error: "rate_limited" });
+		expect(seen).toEqual(["203.0.113.77"]);
+		expect(model.calls).toHaveLength(0);
+		expect(scrubs + nameChecks).toBe(0);
+		expect(touched).toEqual([]);
+	});
+
+	it("the limit comes first, even for a body that would be rejected", async () => {
+		const deny: Limiter = { limit: async () => ({ success: false }) };
+		const response = await handleAssistant(askRequest(42), { ...env, ASSISTANT_LIMITER: deny } as Env, deps(scriptedModel(Q1.reply)));
+		expect(response.status).toBe(429);
+	});
+
+	it("through the Worker, an over-limit session gets 429 and no model call", async () => {
+		const cookie = await loginCookie("203.0.113.62");
+		const model = scriptedModel(Q1.reply);
+		vi.stubGlobal("fetch", model.fetch);
+		const deny: Limiter = { limit: async () => ({ success: false }) };
+		const response = await worker.fetch(
+			new Request(BASE + "/api/assistant", { method: "POST", headers: { "Content-Type": "application/json", Origin: BASE, Cookie: cookie }, body: JSON.stringify({ question: Q1.question }) }),
+			{ ...env, ASSISTANT_LIMITER: deny } as Env,
+			{ waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext,
+		);
+		expect(response.status).toBe(429);
+		expect(response.headers.get("Retry-After")).toBe("60");
+		expect(model.calls).toHaveLength(0);
+	});
+
+	it("the real ASSISTANT_LIMITER binding exists", () => {
+		expect(typeof (env as unknown as { ASSISTANT_LIMITER?: Limiter }).ASSISTANT_LIMITER?.limit).toBe("function");
 	});
 });
 
