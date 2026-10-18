@@ -8,6 +8,9 @@ export const RANKING_DEFAULT = 50;
 export const RANKING_MAX = 100;
 const REASON_MAX = 300;
 
+/** The site's own pages. Every other page is a content page. The only place this list is written down. */
+export const SITE_PAGES = ["/", "/subscribe", "/about"];
+
 export const BREAKDOWN_FIELDS = ["source", "status", "signup_month", "kind", "cold"] as const;
 export type BreakdownField = (typeof BREAKDOWN_FIELDS)[number];
 export type PagesMode = "all" | "first_visit";
@@ -16,7 +19,7 @@ export type PagesMode = "all" | "first_visit";
 export type Plan =
 	| { tool: "count_profiles"; params: { filters: Filters } }
 	| { tool: "build_segment"; params: { filters: Filters } }
-	| { tool: "top_pages"; params: { filters: Filters; mode: PagesMode; limit: number } }
+	| { tool: "top_pages"; params: { filters: Filters; mode: PagesMode; limit: number; include_site_pages: boolean } }
 	| { tool: "breakdown"; params: { by: BreakdownField; filters: Filters } }
 	| { tool: "engagement_ranking"; params: { limit: number; filters: Filters } }
 	| { tool: "unsupported"; params: { reason: string } };
@@ -69,12 +72,14 @@ export function validatePlan(name: unknown, input: unknown): PlanCheck {
 			return filters === null ? FAIL : { ok: true, plan: { tool: name, params: { filters } } };
 		}
 		case "top_pages": {
-			if (!only("filters", "mode", "limit")) return FAIL;
+			if (!only("filters", "mode", "limit", "include_site_pages")) return FAIL;
 			const filters = filtersOf();
 			const limit = limitOf(raw.limit, TOP_PAGES_DEFAULT, TOP_PAGES_MAX);
 			if (filters === null || limit === null) return FAIL;
 			if (raw.mode !== "all" && raw.mode !== "first_visit") return FAIL;
-			return { ok: true, plan: { tool: "top_pages", params: { filters, mode: raw.mode, limit } } };
+			const include = raw.include_site_pages === undefined ? false : raw.include_site_pages;
+			if (typeof include !== "boolean") return FAIL;
+			return { ok: true, plan: { tool: "top_pages", params: { filters, mode: raw.mode, limit, include_site_pages: include } } };
 		}
 		case "breakdown": {
 			if (!only("by", "filters")) return FAIL;
@@ -169,28 +174,33 @@ async function breakdown(db: D1Database, by: BreakdownField, filters: Filters): 
  * their linked visits: 'all' counts each profile once per page, 'first_visit' keeps only each profile's earliest visit
  * across all of its visitor_ids, at any time (MIN over ts + page, so a tie on time takes the page that sorts first). No per-profile subqueries.
  */
-async function topPages(db: D1Database, filters: Filters, mode: PagesMode, limit: number): Promise<ToolResult> {
+async function topPages(db: D1Database, filters: Filters, mode: PagesMode, limit: number, includeSitePages: boolean): Promise<ToolResult> {
 	const where = buildWhere(filters);
+	// Site-page visits are dropped before grouping or MIN, by exact match on bound values.
+	const skip = includeSitePages ? "" : ` WHERE w.page NOT IN (${SITE_PAGES.map(() => "?").join(", ")})`;
+	const skipBinds = includeSitePages ? [] : SITE_PAGES;
 	const statement =
 		mode === "all"
 			? db.prepare(
 					`WITH m AS (SELECT p.profile_id AS profile_id FROM profiles p LEFT JOIN subscribers s ON s.email_norm = p.email_norm WHERE ${where.sql})
 					SELECT w.page AS page, COUNT(DISTINCT vl.profile_id) AS profiles
 					FROM m JOIN visitor_links vl ON vl.profile_id = m.profile_id JOIN web_events w ON w.visitor_id = vl.visitor_id
-					GROUP BY w.page ORDER BY profiles DESC, w.page ASC LIMIT ?`,
+					${skip}
+						GROUP BY w.page ORDER BY profiles DESC, w.page ASC LIMIT ?`,
 				)
 			: db.prepare(
 					`WITH m AS (SELECT p.profile_id AS profile_id FROM profiles p LEFT JOIN subscribers s ON s.email_norm = p.email_norm WHERE ${where.sql}),
 					f AS (SELECT MIN(w.ts || '|' || w.page) AS k
 						FROM m JOIN visitor_links vl ON vl.profile_id = m.profile_id JOIN web_events w ON w.visitor_id = vl.visitor_id
+						${skip}
 						GROUP BY vl.profile_id)
 					SELECT substr(k, instr(k, '|') + 1) AS page, COUNT(*) AS profiles FROM f GROUP BY page ORDER BY profiles DESC, page ASC LIMIT ?`,
 				);
-	const { results } = await statement.bind(...where.binds, limit).all<{ page: string; profiles: number }>();
+	const { results } = await statement.bind(...where.binds, ...skipBinds, limit).all<{ page: string; profiles: number }>();
 	const title = mode === "all" ? "Pages visited (profiles)" : "First pages visited (profiles)";
 	return {
 		tool: "top_pages",
-		params: { filters, mode, limit },
+		params: { filters, mode, limit, include_site_pages: includeSitePages },
 		rows: results,
 		chart: { type: "bar", labels: results.map((r) => r.page), values: results.map((r) => r.profiles), title },
 	};
@@ -212,7 +222,7 @@ export async function runTool(db: D1Database, plan: Plan): Promise<ToolResult> {
 			return { tool: plan.tool, params: plan.params, count: preview.count, rows: preview.rows, chart: groupsChart(preview.chart.by_source, "Profiles by source") };
 		}
 		case "top_pages":
-			return topPages(db, plan.params.filters, plan.params.mode, plan.params.limit);
+			return topPages(db, plan.params.filters, plan.params.mode, plan.params.limit, plan.params.include_site_pages);
 		case "breakdown":
 			return breakdown(db, plan.params.by, plan.params.filters);
 		case "engagement_ranking": {
