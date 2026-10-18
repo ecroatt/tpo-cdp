@@ -1,4 +1,5 @@
 import { ModelUnavailableError, PiiBlockedError, sendToModel } from "../assistant/model";
+import { questionNamesSomeone } from "../assistant/names";
 import { buildModelRequest } from "../assistant/prompt";
 import { hasDisguisedEmail, scrubQuestion } from "../assistant/scrub";
 import { answerFor } from "../assistant/templates";
@@ -12,6 +13,8 @@ export interface AssistantDeps {
 	fetch?: typeof fetch;
 	/** Defaults to scrubQuestion. Tests swap it to prove the guard in sendToModel is the last line of defense. */
 	scrub?: (question: string) => string;
+	/** Defaults to questionNamesSomeone. Tests that touch no database swap it for a stub. */
+	names?: (db: D1Database, question: string) => Promise<boolean>;
 }
 
 /**
@@ -35,6 +38,9 @@ export async function handleAssistant(request: Request, env: Env, deps: Assistan
 	// refused outright: no model call and no SQL.
 	const scrubbed = (deps.scrub ?? scrubQuestion)(question.trim());
 	if (hasDisguisedEmail(scrubbed)) return json({ error: "blocked_pii" }, 422);
+
+	// Two adjacent words that are the first and last name from a stored email: refused outright too.
+	if (await (deps.names ?? questionNamesSomeone)(env.tpo_cdp, question)) return json({ error: "blocked_pii" }, 422);
 
 	const body = buildModelRequest(scrubbed);
 	let reply;

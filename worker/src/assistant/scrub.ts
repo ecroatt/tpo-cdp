@@ -33,19 +33,19 @@ const DISGUISED_EMAIL_PATTERNS = [
 ];
 
 /** NFKC (a fullwidth "＠" becomes "@") with the zero-width characters removed. */
-function canonical(text: string): string {
+export function canonicalText(text: string): string {
 	return text.normalize("NFKC").replace(new RegExp(ZERO_WIDTH, "g"), "");
 }
 
 /** True when `text` holds an email written in a way the plain pattern misses (see DISGUISED_EMAIL_PATTERNS). */
 export function hasDisguisedEmail(text: string): boolean {
-	const clean = canonical(text);
+	const clean = canonicalText(text);
 	return DISGUISED_EMAIL_PATTERNS.some((pattern) => new RegExp(pattern, "i").test(clean));
 }
 
 /** True when `text` holds an email (plain or disguised) or one of the ID shapes. */
 export function containsPrivateValue(text: string): boolean {
-	const clean = canonical(text);
+	const clean = canonicalText(text);
 	if (new RegExp(EMAIL_PATTERN).test(clean)) return true;
 	if (ID_PATTERNS.some((pattern) => new RegExp(pattern, "i").test(clean))) return true;
 	return hasDisguisedEmail(clean);
@@ -53,7 +53,7 @@ export function containsPrivateValue(text: string): boolean {
 
 /** Replaces emails with [email] and ids with [id], after NFKC and zero-width removal. Everything else is left as typed. */
 export function scrubQuestion(question: string): string {
-	let out = canonical(question).replace(new RegExp(EMAIL_PATTERN, "g"), "[email]");
+	let out = canonicalText(question).replace(new RegExp(EMAIL_PATTERN, "g"), "[email]");
 	for (const pattern of ID_PATTERNS) out = out.replace(new RegExp(pattern, "gi"), "[id]");
 	return out;
 }

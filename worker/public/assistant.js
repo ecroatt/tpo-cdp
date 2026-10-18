@@ -15,6 +15,8 @@ const ERRORS = {
 	502: "The assistant is unavailable right now. Please try again in a moment.",
 };
 
+const BLOCKED = "That question looks like it names or identifies a person. Individual lookups belong on the Lookup page; ask about the audience as a whole here.";
+
 const PROFILE_HEADINGS = ["Profile", "Email", "Source", "Status", "Signed up", "Last open", "Score"];
 
 /** The table for a result, by tool. Returns null when the result has no rows to show. */
@@ -44,7 +46,7 @@ form.addEventListener("submit", async (event) => {
 	status.textContent = "Thinking...";
 	const { status: code, body } = await postJson("/api/assistant", { question: input.value });
 	if (code !== 200) {
-		status.textContent = ERRORS[code] ?? "Something went wrong. Please try again.";
+		status.textContent = body.error === "blocked_pii" ? BLOCKED : (ERRORS[code] ?? "Something went wrong. Please try again.");
 		return;
 	}
 	status.textContent = "";
