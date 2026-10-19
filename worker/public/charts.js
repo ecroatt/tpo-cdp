@@ -17,9 +17,10 @@ export function drawChart(canvas, chart) {
 	clearChart(canvas);
 	if (!window.Chart || chart.labels.length === 0) return;
 	canvas.hidden = false;
+	const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#1f5fbf";
 	const instance = new window.Chart(canvas, {
 		type: chart.type,
-		data: { labels: chart.labels, datasets: [{ label: chart.title, data: chart.values, backgroundColor: "#3b6ea5", borderColor: "#3b6ea5", fill: false, tension: 0 }] },
+		data: { labels: chart.labels, datasets: [{ label: chart.title, data: chart.values, backgroundColor: accent, borderColor: accent, maxBarThickness: 56, fill: false, tension: 0 }] },
 		options: {
 			responsive: true,
 			maintainAspectRatio: false,

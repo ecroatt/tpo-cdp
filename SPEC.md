@@ -413,6 +413,7 @@ Three cards, each a link with one plain sentence:
 - Light background, one accent color (defined once as a CSS custom property in each stylesheet), white cards with a light border and radius, and a header bar holding the title, the nav and Sign out. The active nav link is styled from `[aria-current="page"]`.
 - Numbers in tables are right-aligned: `api.js` `table()` adds a `num` class to a cell whose value is a number, and the import table's value cells get it too.
 - Buttons have clear default, hover and disabled styles, and every interactive element has a visible `:focus-visible` outline.
+- `main` is 72rem wide. Tables are full width; wide ones scroll inside their container (`#results`, `.table-scroll`, `.card`), never the page. Charts are framed as cards, bars are capped at 56 px and colored with `--accent`.
 - Readable at 375 px wide with no horizontal page scroll: the header wraps, tiles and cards stack into one column, and wide tables scroll inside their own container.
 - System font stack only (`system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`). No `@import`, no `url(http…)`, no `@font-face`, no CDN, no `style=` attributes and no inline `<script>` or `<style>`, so the CSP is unchanged.
 - No TPO logo, name styling or brand colors; the title stays "TPO CDP" as plain text.

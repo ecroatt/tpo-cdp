@@ -62,7 +62,7 @@ nav a[aria-current="page"] {
 }
 
 main {
-	max-width: 56rem;
+	max-width: 72rem;
 	margin: 0 auto;
 	padding: 1rem;
 }
@@ -78,22 +78,17 @@ a {
 
 table {
 	border-collapse: collapse;
-	display: block;
-	max-width: 100%;
-	overflow-x: auto;
+	display: table;
+	width: 100%;
 	background: var(--surface);
 	border: 1px solid var(--border);
 	border-radius: 8px;
 }
 
+#results,
 .table-scroll {
 	max-width: 100%;
 	overflow-x: auto;
-}
-
-.table-scroll table {
-	display: table;
-	width: 100%;
 }
 
 th,
@@ -104,11 +99,13 @@ td {
 }
 
 th {
+	white-space: nowrap;
 	background: var(--background);
 	font-weight: 600;
 }
 
 .num {
+	white-space: nowrap;
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 }
@@ -199,6 +196,7 @@ input[type="search"] {
 	border-radius: 8px;
 	margin: 1rem 0;
 	padding: 0 1rem 1rem;
+	overflow-x: auto;
 }
 
 .tiles,
@@ -271,6 +269,10 @@ dd {
 	position: relative;
 	height: 18rem;
 	margin: 1rem 0;
+	padding: 0.75rem 1rem;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
 }
 
 .chart-box[hidden],
