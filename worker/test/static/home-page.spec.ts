@@ -237,6 +237,52 @@ describe("visual refresh", () => {
 		});
 	});
 
+	describe("desktop layout and charts", () => {
+		const css = read("style.css");
+		const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+			selectors: m[1].split(",").map((s) => s.trim()),
+			body: m[2],
+		}));
+		const bodiesFor = (selector: string) => rules.filter((r) => r.selectors.includes(selector)).map((r) => r.body);
+
+		it("main is at least 64rem wide", () => {
+			const widths = bodiesFor("main").map((b) => b.match(/max-width:\s*([\d.]+)rem/)?.[1]);
+			expect(widths.some((w) => w !== undefined && Number(w) >= 64)).toBe(true);
+		});
+
+		it("no table rule sets display: block", () => {
+			for (const r of rules) {
+				if (r.selectors.some((s) => /(^|\s)table$/.test(s))) expect(r.body).not.toMatch(/display:\s*block/);
+			}
+			expect(bodiesFor("table").some((b) => /display:\s*table/.test(b) && /width:\s*100%/.test(b))).toBe(true);
+		});
+
+		it("#results, .table-scroll and .card scroll horizontally inside themselves", () => {
+			for (const sel of ["#results", ".table-scroll", ".card"]) {
+				expect(bodiesFor(sel).some((b) => /overflow-x:\s*auto/.test(b)), sel).toBe(true);
+			}
+		});
+
+		it("th and .num do not wrap", () => {
+			expect(bodiesFor("th").some((b) => /white-space:\s*nowrap/.test(b))).toBe(true);
+			expect(bodiesFor(".num").some((b) => /white-space:\s*nowrap/.test(b))).toBe(true);
+		});
+
+		it(".chart-box is framed as a card", () => {
+			const body = bodiesFor(".chart-box").join(";");
+			expect(body).toMatch(/background:/);
+			expect(body).toMatch(/border:/);
+			expect(body).toMatch(/border-radius:/);
+		});
+
+		it("charts.js caps bar width and takes its colour from --accent", () => {
+			const js = read("charts.js");
+			expect(js).toContain("maxBarThickness: 56");
+			expect(js).toContain("--accent");
+			expect([...js.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0].toLowerCase())).toEqual(["#1f5fbf"]);
+		});
+	});
+
 	it("api.js table() marks numeric cells with the num class", () => {
 		expect(read("api.js")).toMatch(/typeof value === "number"[\s\S]*"num"/);
 	});
