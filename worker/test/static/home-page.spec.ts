@@ -245,9 +245,20 @@ describe("visual refresh", () => {
 		}));
 		const bodiesFor = (selector: string) => rules.filter((r) => r.selectors.includes(selector)).map((r) => r.body);
 
-		it("main is at least 64rem wide", () => {
+		it("main max-width is exactly 72rem", () => {
 			const widths = bodiesFor("main").map((b) => b.match(/max-width:\s*([\d.]+)rem/)?.[1]);
-			expect(widths.some((w) => w !== undefined && Number(w) >= 64)).toBe(true);
+			expect(widths.filter((w) => w !== undefined).map(Number)).toEqual([72]);
+		});
+
+		it(".chart-box[hidden] and .chart-box:has(canvas[hidden]) are display: none", () => {
+			for (const sel of [".chart-box[hidden]", ".chart-box:has(canvas[hidden])"]) {
+				expect(bodiesFor(sel).some((b) => /(^|[;\s])display:\s*none\b/.test(b)), sel).toBe(true);
+			}
+		});
+
+		it("charts.js passes type: chart.type to the Chart constructor", () => {
+			const js = read("charts.js");
+			expect(js).toMatch(/new window\.Chart\(\s*canvas\s*,\s*\{\s*type:\s*chart\.type\s*,/);
 		});
 
 		it("no table rule sets display: block", () => {
@@ -278,7 +289,9 @@ describe("visual refresh", () => {
 		it("charts.js caps bar width and takes its colour from --accent", () => {
 			const js = read("charts.js");
 			expect(js).toContain("maxBarThickness: 56");
-			expect(js).toContain("--accent");
+			expect(js).toMatch(/const accent = getComputedStyle\([^)]*\)\.getPropertyValue\("--accent"\)/);
+			expect(js).toMatch(/backgroundColor:\s*accent\s*,/);
+			expect(js).toMatch(/borderColor:\s*accent\s*,/);
 			expect([...js.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0].toLowerCase())).toEqual(["#1f5fbf"]);
 		});
 	});
